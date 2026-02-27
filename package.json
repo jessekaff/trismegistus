@@ -1,0 +1,21 @@
+{
+  "name": "trismegistus",
+  "version": "0.1.0",
+  "description": "A local persistent daemon that runs ai sessions from a task queue, with mobile support.",
+  "bin": {
+    "tmg": "./bin/tmg.sh"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "task-manager",
+    "daemon",
+    "automation",
+    "ai"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jessekaff/trismegistus"
+  }
+}
