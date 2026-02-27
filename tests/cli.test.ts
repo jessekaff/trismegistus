@@ -58,6 +58,12 @@ describe("CLI", () => {
     }
   });
 
+  it("remote --help shows command description", () => {
+    const output = run(["remote", "--help"]);
+    expect(output).toContain("VS Code tunnel");
+    expect(output).toContain("--name");
+  });
+
   it("reset with no gave-up tasks", () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "tmg-cli-"));
     try {

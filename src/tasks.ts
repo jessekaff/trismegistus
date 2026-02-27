@@ -154,6 +154,19 @@ export function getAttemptFromStatus(status: TaskStatus): number {
   }
 }
 
+export function addTask(projectDir: string, text: string): void {
+  const path = tasksPath(projectDir);
+  if (!existsSync(path)) {
+    throw new Error(
+      "No tasks file found. Run `tmg init` first.",
+    );
+  }
+  const content = readFileSync(path, "utf-8");
+  const line = `- [ ] ${text}\n`;
+  const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+  writeFileSync(path, content + separator + line);
+}
+
 export function getFailureStatus(attempt: number): TaskStatus {
   if (attempt === 1) return "!";
   if (attempt === 2) return "!!";

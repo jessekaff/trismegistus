@@ -9,6 +9,7 @@ import {
   setTaskStatus,
   getTaskCounts,
   resetGaveUpTasks,
+  addTask,
   readAndClearNotes,
   readHandoff,
   writeHandoff,
@@ -182,6 +183,32 @@ describe("resetGaveUpTasks", () => {
   it("returns 0 when no gave-up tasks", () => {
     writeTasks("- [x] Done\n- [ ] Pending");
     expect(resetGaveUpTasks(tmpDir)).toBe(0);
+  });
+});
+
+describe("addTask", () => {
+  it("appends a task with correct format", () => {
+    writeTasks("- [ ] Existing task\n");
+    addTask(tmpDir, "New task");
+    expect(readTasksFile()).toBe("- [ ] Existing task\n- [ ] New task\n");
+  });
+
+  it("handles file without trailing newline", () => {
+    writeTasks("- [ ] Existing task");
+    addTask(tmpDir, "New task");
+    expect(readTasksFile()).toBe("- [ ] Existing task\n- [ ] New task\n");
+  });
+
+  it("appends to empty file", () => {
+    writeTasks("");
+    addTask(tmpDir, "First task");
+    expect(readTasksFile()).toBe("- [ ] First task\n");
+  });
+
+  it("throws when tasks file does not exist", () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), "tmg-empty-"));
+    expect(() => addTask(emptyDir, "Nope")).toThrow("Run `tmg init` first");
+    rmSync(emptyDir, { recursive: true, force: true });
   });
 });
 

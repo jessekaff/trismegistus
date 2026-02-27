@@ -1,8 +1,11 @@
 import { Command } from "commander";
+import { hostname } from "node:os";
+import qrcode from "qrcode-terminal";
 import { VERSION } from "./types.js";
 import { initProject } from "./init.js";
-import { getTaskCounts, resetGaveUpTasks } from "./tasks.js";
+import { addTask, getTaskCounts, resetGaveUpTasks } from "./tasks.js";
 import { preflight, runDaemon } from "./daemon.js";
+import { checkCodeCli, startTunnel } from "./tunnel.js";
 
 const program = new Command();
 
@@ -70,6 +73,20 @@ program
   });
 
 program
+  .command("add")
+  .description("Add a task to the queue")
+  .argument("<text>", "Task description")
+  .action((text: string) => {
+    try {
+      addTask(process.cwd(), text);
+      console.log(`Added: ${text}`);
+    } catch (e: unknown) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+  });
+
+program
   .command("reset")
   .description("Reset all gave-up [!!!] tasks back to pending [ ]")
   .action(() => {
@@ -79,6 +96,46 @@ program
       console.log("  No gave-up tasks to reset.");
     } else {
       console.log(`  Reset ${count} task(s) back to pending.`);
+    }
+  });
+
+program
+  .command("remote")
+  .description("Open a VS Code tunnel for phone access (QR code)")
+  .option("--name <name>", "Tunnel name", hostname())
+  .action(async (opts: { name: string }) => {
+    try {
+      checkCodeCli();
+    } catch (e: unknown) {
+      console.error((e as Error).message);
+      process.exit(1);
+    }
+
+    console.log("Starting VS Code tunnel...");
+
+    try {
+      const { url, process: tunnelProc } = await startTunnel(opts.name);
+
+      console.log("");
+      console.log(`  URL: ${url}`);
+      console.log("");
+      qrcode.generate(url, { small: true }, (code: string) => {
+        console.log(code);
+      });
+      console.log("  Scan the QR code or open the URL on your phone");
+      console.log("  Press Ctrl+C to stop the tunnel");
+      console.log("");
+
+      const cleanup = () => {
+        tunnelProc.kill();
+        process.exit(0);
+      };
+
+      process.on("SIGINT", cleanup);
+      process.on("SIGTERM", cleanup);
+    } catch (e: unknown) {
+      console.error((e as Error).message);
+      process.exit(1);
     }
   });
 
