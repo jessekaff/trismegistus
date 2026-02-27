@@ -1,13 +1,39 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 
-export function checkCodeCli(): void {
+export type EditorCli = "cursor" | "code";
+
+export function detectEditorCli(): EditorCli {
+  // Cursor sets TERM_PROGRAM=cursor in its integrated terminal
+  if (process.env.TERM_PROGRAM === "cursor") return "cursor";
+
+  // Cursor also sets VSCODE_PID but with a different resolvedShell
+  // Check for Cursor-specific env vars
+  if (process.env.CURSOR_TRACE_DIR) return "cursor";
+
+  return "code";
+}
+
+function cliExists(cli: string): boolean {
   try {
-    execFileSync("which", ["code"], { stdio: "ignore" });
+    execFileSync("which", [cli], { stdio: "ignore" });
+    return true;
   } catch {
-    throw new Error(
-      "VS Code CLI (code) not found. Install VS Code or download the standalone CLI: https://code.visualstudio.com/docs/editor/command-line",
-    );
+    return false;
   }
+}
+
+export function checkCodeCli(): EditorCli {
+  const detected = detectEditorCli();
+
+  if (cliExists(detected)) return detected;
+
+  // Fall back to the other option
+  const fallback: EditorCli = detected === "cursor" ? "code" : "cursor";
+  if (cliExists(fallback)) return fallback;
+
+  throw new Error(
+    `Neither "cursor" nor "code" CLI found. Install VS Code or Cursor, or download the standalone CLI: https://code.visualstudio.com/docs/editor/command-line`,
+  );
 }
 
 export interface TunnelResult {
@@ -15,10 +41,10 @@ export interface TunnelResult {
   process: ChildProcess;
 }
 
-export function startTunnel(name: string): Promise<TunnelResult> {
+export function startTunnel(name: string, cli: EditorCli = "code"): Promise<TunnelResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(
-      "code",
+      cli,
       ["tunnel", "--name", name, "--accept-server-license-terms"],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
@@ -48,7 +74,7 @@ export function startTunnel(name: string): Promise<TunnelResult> {
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      const match = text.match(/(https:\/\/vscode\.dev\/tunnel\/[^\s]+)/);
+      const match = text.match(/(https:\/\/(?:vscode|cursor)\.dev\/tunnel\/[^\s]+)/);
       if (match) {
         clearTimeout(timer);
         settle(() => resolve({ url: match[1], process: child }));

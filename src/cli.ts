@@ -125,17 +125,19 @@ program
   .option("--name <name>", "Tunnel name")
   .action(async (opts: { name?: string }) => {
     const tunnelName = opts.name ?? hostname();
+    let cli: import("./tunnel.js").EditorCli;
     try {
-      checkCodeCli();
+      cli = checkCodeCli();
     } catch (e: unknown) {
       console.error(e instanceof Error ? e.message : String(e));
       process.exit(1);
     }
 
-    console.log("Starting VS Code tunnel...");
+    const editorName = cli === "cursor" ? "Cursor" : "VS Code";
+    console.log(`Starting ${editorName} tunnel...`);
 
     try {
-      const { url, process: tunnelProc } = await startTunnel(tunnelName);
+      const { url, process: tunnelProc } = await startTunnel(tunnelName, cli);
 
       console.log("");
       console.log(`  URL: ${url}`);

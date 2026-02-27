@@ -9,29 +9,64 @@ vi.mock("node:child_process", () => ({
 }));
 
 import { execFileSync, spawn } from "node:child_process";
-import { checkCodeCli, startTunnel } from "../src/tunnel.js";
+import { checkCodeCli, detectEditorCli, startTunnel } from "../src/tunnel.js";
 
 const mockExecFileSync = vi.mocked(execFileSync);
 const mockSpawn = vi.mocked(spawn);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete process.env.TERM_PROGRAM;
+  delete process.env.CURSOR_TRACE_DIR;
+});
+
+describe("detectEditorCli", () => {
+  it("returns 'cursor' when TERM_PROGRAM is cursor", () => {
+    process.env.TERM_PROGRAM = "cursor";
+    expect(detectEditorCli()).toBe("cursor");
+  });
+
+  it("returns 'cursor' when CURSOR_TRACE_DIR is set", () => {
+    process.env.CURSOR_TRACE_DIR = "/tmp/cursor";
+    expect(detectEditorCli()).toBe("cursor");
+  });
+
+  it("returns 'code' by default", () => {
+    expect(detectEditorCli()).toBe("code");
+  });
 });
 
 describe("checkCodeCli", () => {
-  it("does not throw when code CLI is found", () => {
+  it("returns detected CLI when it exists", () => {
     mockExecFileSync.mockReturnValue("");
-    expect(() => checkCodeCli()).not.toThrow();
+    expect(checkCodeCli()).toBe("code");
     expect(mockExecFileSync).toHaveBeenCalledWith("which", ["code"], {
       stdio: "ignore",
     });
   });
 
-  it("throws when code CLI is not found", () => {
+  it("returns cursor when in Cursor and cursor CLI exists", () => {
+    process.env.TERM_PROGRAM = "cursor";
+    mockExecFileSync.mockReturnValue("");
+    expect(checkCodeCli()).toBe("cursor");
+    expect(mockExecFileSync).toHaveBeenCalledWith("which", ["cursor"], {
+      stdio: "ignore",
+    });
+  });
+
+  it("falls back to other CLI if detected one is missing", () => {
+    process.env.TERM_PROGRAM = "cursor";
+    mockExecFileSync
+      .mockImplementationOnce(() => { throw new Error("not found"); }) // cursor missing
+      .mockReturnValueOnce(""); // code exists
+    expect(checkCodeCli()).toBe("code");
+  });
+
+  it("throws when neither CLI is found", () => {
     mockExecFileSync.mockImplementation(() => {
       throw new Error("not found");
     });
-    expect(() => checkCodeCli()).toThrow("VS Code CLI (code) not found");
+    expect(() => checkCodeCli()).toThrow('Neither "cursor" nor "code" CLI found');
   });
 });
 
