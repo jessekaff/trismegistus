@@ -13,7 +13,11 @@ import {
   getFailureStatus,
 } from "./tasks.js";
 import { runClaude, type SpawnFn } from "./runner.js";
-import { DIR_NAME, TASKS_FILE, VERSION } from "./types.js";
+import { createRequire } from "node:module";
+import { DIR_NAME, TASKS_FILE } from "./types.js";
+
+const require = createRequire(import.meta.url);
+const VERSION = (require("../package.json") as { version: string }).version;
 import type { Config } from "./types.js";
 
 export interface PreflightResult {

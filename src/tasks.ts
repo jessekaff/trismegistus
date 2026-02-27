@@ -60,20 +60,25 @@ export function setTaskStatus(
   projectDir: string,
   taskText: string,
   newStatus: TaskStatus,
-): void {
+): boolean {
   const path = tasksPath(projectDir);
   const content = readFileSync(path, "utf-8");
   const lines = content.split("\n");
+  let found = false;
 
   for (let i = 0; i < lines.length; i++) {
     const match = lines[i].match(TASK_REGEX);
     if (match && match[2] === taskText) {
       lines[i] = `- [${newStatus}] ${taskText}`;
+      found = true;
       break;
     }
   }
 
-  writeFileSync(path, lines.join("\n"));
+  if (found) {
+    writeFileSync(path, lines.join("\n"));
+  }
+  return found;
 }
 
 export function getTaskCounts(projectDir: string): Record<string, number> {
@@ -155,6 +160,10 @@ export function getAttemptFromStatus(status: TaskStatus): number {
 }
 
 export function addTask(projectDir: string, text: string): void {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("Task text cannot be empty.");
+  }
   const path = tasksPath(projectDir);
   if (!existsSync(path)) {
     throw new Error(
@@ -162,7 +171,7 @@ export function addTask(projectDir: string, text: string): void {
     );
   }
   const content = readFileSync(path, "utf-8");
-  const line = `- [ ] ${text}\n`;
+  const line = `- [ ] ${trimmed}\n`;
   const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
   writeFileSync(path, content + separator + line);
 }

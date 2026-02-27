@@ -1,7 +1,7 @@
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import { hostname } from "node:os";
 import qrcode from "qrcode-terminal";
-import { VERSION } from "./types.js";
 import { initProject } from "./init.js";
 import { addTask, getTaskCounts, resetGaveUpTasks } from "./tasks.js";
 import { preflight, runDaemon } from "./daemon.js";
@@ -12,7 +12,13 @@ const program = new Command();
 program
   .name("tmg")
   .description("Trismegistus — Task Manager for Claude Code")
-  .version(VERSION, "-v, --version");
+  .version(
+    (() => {
+      const req = createRequire(import.meta.url);
+      return (req("../package.json") as { version: string }).version;
+    })(),
+    "-v, --version",
+  );
 
 program
   .command("init")
@@ -81,7 +87,7 @@ program
       addTask(process.cwd(), text);
       console.log(`Added: ${text}`);
     } catch (e: unknown) {
-      console.error((e as Error).message);
+      console.error(e instanceof Error ? e.message : String(e));
       process.exit(1);
     }
   });
@@ -102,19 +108,20 @@ program
 program
   .command("remote")
   .description("Open a VS Code tunnel for phone access (QR code)")
-  .option("--name <name>", "Tunnel name", hostname())
-  .action(async (opts: { name: string }) => {
+  .option("--name <name>", "Tunnel name")
+  .action(async (opts: { name?: string }) => {
+    const tunnelName = opts.name ?? hostname();
     try {
       checkCodeCli();
     } catch (e: unknown) {
-      console.error((e as Error).message);
+      console.error(e instanceof Error ? e.message : String(e));
       process.exit(1);
     }
 
     console.log("Starting VS Code tunnel...");
 
     try {
-      const { url, process: tunnelProc } = await startTunnel(opts.name);
+      const { url, process: tunnelProc } = await startTunnel(tunnelName);
 
       console.log("");
       console.log(`  URL: ${url}`);
@@ -134,7 +141,7 @@ program
       process.on("SIGINT", cleanup);
       process.on("SIGTERM", cleanup);
     } catch (e: unknown) {
-      console.error((e as Error).message);
+      console.error(e instanceof Error ? e.message : String(e));
       process.exit(1);
     }
   });

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A local persistent daemon that runs AI sessions from a task queue, with mobile support.",
   "type": "module",
+  "main": "./dist/cli.js",
   "bin": {
     "tmg": "./dist/cli.js"
   },
@@ -21,10 +22,15 @@
     "automation",
     "ai"
   ],
+  "author": "jessekaff",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jessekaff/trismegistus"
+    "url": "git+https://github.com/jessekaff/trismegistus.git"
+  },
+  "homepage": "https://github.com/jessekaff/trismegistus#readme",
+  "bugs": {
+    "url": "https://github.com/jessekaff/trismegistus/issues"
   },
   "engines": {
     "node": ">=18"

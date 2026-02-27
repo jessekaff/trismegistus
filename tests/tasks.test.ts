@@ -119,6 +119,19 @@ describe("setTaskStatus", () => {
     expect(content).toContain("- [ ] Task B");
   });
 
+  it("returns false when task not found", () => {
+    writeTasks("- [ ] Task A");
+    const result = setTaskStatus(tmpDir, "Nonexistent", "x");
+    expect(result).toBe(false);
+    expect(readTasksFile()).toBe("- [ ] Task A");
+  });
+
+  it("returns true when task is updated", () => {
+    writeTasks("- [ ] Task A");
+    const result = setTaskStatus(tmpDir, "Task A", "x");
+    expect(result).toBe(true);
+  });
+
   it("handles failure status escalation", () => {
     writeTasks("- [ ] Failing task");
     setTaskStatus(tmpDir, "Failing task", "!");
@@ -209,6 +222,12 @@ describe("addTask", () => {
     const emptyDir = mkdtempSync(join(tmpdir(), "tmg-empty-"));
     expect(() => addTask(emptyDir, "Nope")).toThrow("Run `tmg init` first");
     rmSync(emptyDir, { recursive: true, force: true });
+  });
+
+  it("throws when task text is empty", () => {
+    writeTasks("- [ ] Existing task\n");
+    expect(() => addTask(tmpDir, "")).toThrow("Task text cannot be empty");
+    expect(() => addTask(tmpDir, "   ")).toThrow("Task text cannot be empty");
   });
 });
 

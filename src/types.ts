@@ -26,8 +26,6 @@ export const DEFAULT_CONFIG: Config = {
   taskDelaySeconds: 5,
 };
 
-export const VERSION = "0.1.0";
-
 export const DIR_NAME = ".trismegistus";
 export const CONFIG_FILE = "config";
 export const TASKS_FILE = "tasks.md";
