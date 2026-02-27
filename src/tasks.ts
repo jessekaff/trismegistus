@@ -159,6 +159,20 @@ export function getAttemptFromStatus(status: TaskStatus): number {
   }
 }
 
+export function appendNotes(projectDir: string, text: string): void {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    throw new Error("Notes text cannot be empty.");
+  }
+  const path = notesPath(projectDir);
+  if (!existsSync(path)) {
+    throw new Error("No notes file found. Run `tmg init` first.");
+  }
+  const content = readFileSync(path, "utf-8");
+  const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
+  writeFileSync(path, content + separator + trimmed + "\n");
+}
+
 export function addTask(projectDir: string, text: string): void {
   const trimmed = text.trim();
   if (!trimmed) {

@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { hostname } from "node:os";
 import qrcode from "qrcode-terminal";
 import { initProject } from "./init.js";
-import { addTask, getTaskCounts, resetGaveUpTasks } from "./tasks.js";
+import { addTask, appendNotes, getTaskCounts, resetGaveUpTasks } from "./tasks.js";
 import { preflight, runDaemon } from "./daemon.js";
 import { checkCodeCli, startTunnel } from "./tunnel.js";
 
@@ -86,6 +86,20 @@ program
     try {
       addTask(process.cwd(), text);
       console.log(`Added: ${text}`);
+    } catch (e: unknown) {
+      console.error(e instanceof Error ? e.message : String(e));
+      process.exit(1);
+    }
+  });
+
+program
+  .command("notes")
+  .description("Append notes for the daemon's next task run")
+  .argument("<text>", "Notes to add")
+  .action((text: string) => {
+    try {
+      appendNotes(process.cwd(), text);
+      console.log(`Added note: ${text}`);
     } catch (e: unknown) {
       console.error(e instanceof Error ? e.message : String(e));
       process.exit(1);

@@ -18,9 +18,12 @@ import {
   CONFIG_TEMPLATE,
   TASKS_TEMPLATE,
   NOTES_TEMPLATE,
+  CLAUDE_COMMANDS,
 } from "../src/types.js";
 
 let tmpDir: string;
+
+const commandPaths = CLAUDE_COMMANDS.map((c) => `.claude/commands/${c.name}`);
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), "tmg-test-"));
@@ -34,7 +37,7 @@ describe("initProject", () => {
   it("creates .trismegistus directory with all files", () => {
     const result = initProject(tmpDir);
 
-    expect(result.created).toEqual([CONFIG_FILE, TASKS_FILE, NOTES_FILE]);
+    expect(result.created).toEqual([CONFIG_FILE, TASKS_FILE, NOTES_FILE, ...commandPaths]);
     expect(result.skipped).toEqual([]);
 
     const tmgDir = join(tmpDir, DIR_NAME);
@@ -42,6 +45,13 @@ describe("initProject", () => {
     expect(readFileSync(join(tmgDir, CONFIG_FILE), "utf-8")).toBe(CONFIG_TEMPLATE);
     expect(readFileSync(join(tmgDir, TASKS_FILE), "utf-8")).toBe(TASKS_TEMPLATE);
     expect(readFileSync(join(tmgDir, NOTES_FILE), "utf-8")).toBe(NOTES_TEMPLATE);
+
+    // Verify claude commands were created
+    const commandsDir = join(tmpDir, ".claude", "commands");
+    expect(existsSync(commandsDir)).toBe(true);
+    for (const cmd of CLAUDE_COMMANDS) {
+      expect(existsSync(join(commandsDir, cmd.name))).toBe(true);
+    }
   });
 
   it("is idempotent — skips existing files", () => {
@@ -54,7 +64,7 @@ describe("initProject", () => {
     const result = initProject(tmpDir);
 
     expect(result.created).toEqual([]);
-    expect(result.skipped).toEqual([CONFIG_FILE, TASKS_FILE, NOTES_FILE]);
+    expect(result.skipped).toEqual([CONFIG_FILE, TASKS_FILE, NOTES_FILE, ...commandPaths]);
 
     // Verify custom content was preserved
     expect(readFileSync(tasksPath, "utf-8")).toBe("- [ ] My custom task\n");
@@ -67,7 +77,7 @@ describe("initProject", () => {
 
     const result = initProject(tmpDir);
 
-    expect(result.created).toEqual([TASKS_FILE, NOTES_FILE]);
+    expect(result.created).toEqual([TASKS_FILE, NOTES_FILE, ...commandPaths]);
     expect(result.skipped).toEqual([CONFIG_FILE]);
 
     // Existing file preserved

@@ -8,6 +8,7 @@ import {
   CONFIG_TEMPLATE,
   TASKS_TEMPLATE,
   NOTES_TEMPLATE,
+  CLAUDE_COMMANDS,
 } from "./types.js";
 
 interface InitResult {
@@ -17,10 +18,15 @@ interface InitResult {
 
 export function initProject(projectDir: string): InitResult {
   const tmgDir = join(projectDir, DIR_NAME);
+  const claudeCommandsDir = join(projectDir, ".claude", "commands");
   const result: InitResult = { created: [], skipped: [] };
 
   if (!existsSync(tmgDir)) {
     mkdirSync(tmgDir, { recursive: true });
+  }
+
+  if (!existsSync(claudeCommandsDir)) {
+    mkdirSync(claudeCommandsDir, { recursive: true });
   }
 
   const files: Array<{ name: string; content: string }> = [
@@ -36,6 +42,16 @@ export function initProject(projectDir: string): InitResult {
     } else {
       writeFileSync(path, file.content);
       result.created.push(file.name);
+    }
+  }
+
+  for (const cmd of CLAUDE_COMMANDS) {
+    const path = join(claudeCommandsDir, cmd.name);
+    if (existsSync(path)) {
+      result.skipped.push(`.claude/commands/${cmd.name}`);
+    } else {
+      writeFileSync(path, cmd.content);
+      result.created.push(`.claude/commands/${cmd.name}`);
     }
   }
 

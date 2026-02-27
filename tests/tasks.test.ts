@@ -10,6 +10,7 @@ import {
   getTaskCounts,
   resetGaveUpTasks,
   addTask,
+  appendNotes,
   readAndClearNotes,
   readHandoff,
   writeHandoff,
@@ -228,6 +229,33 @@ describe("addTask", () => {
     writeTasks("- [ ] Existing task\n");
     expect(() => addTask(tmpDir, "")).toThrow("Task text cannot be empty");
     expect(() => addTask(tmpDir, "   ")).toThrow("Task text cannot be empty");
+  });
+});
+
+describe("appendNotes", () => {
+  it("appends notes to the file", () => {
+    const notesPath = join(tmgDir, NOTES_FILE);
+    writeFileSync(notesPath, "# Notes for Claude — write here, cleared after each read\n");
+    appendNotes(tmpDir, "First note");
+    expect(readFileSync(notesPath, "utf-8")).toBe(
+      "# Notes for Claude — write here, cleared after each read\nFirst note\n",
+    );
+    appendNotes(tmpDir, "Second note");
+    expect(readFileSync(notesPath, "utf-8")).toBe(
+      "# Notes for Claude — write here, cleared after each read\nFirst note\nSecond note\n",
+    );
+  });
+
+  it("throws when notes file does not exist", () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), "tmg-empty-"));
+    expect(() => appendNotes(emptyDir, "Nope")).toThrow("Run `tmg init` first");
+    rmSync(emptyDir, { recursive: true, force: true });
+  });
+
+  it("throws when text is empty", () => {
+    writeFileSync(join(tmgDir, NOTES_FILE), "# Header\n");
+    expect(() => appendNotes(tmpDir, "")).toThrow("Notes text cannot be empty");
+    expect(() => appendNotes(tmpDir, "   ")).toThrow("Notes text cannot be empty");
   });
 });
 
