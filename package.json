@@ -3,7 +3,6 @@
   "version": "1.0.2",
   "description": "A local persistent daemon that runs AI sessions from a task queue, with mobile support.",
   "type": "module",
-  "main": "./dist/cli.js",
   "bin": {
     "tmg": "./dist/cli.js"
   },
@@ -12,7 +11,7 @@
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "claude",

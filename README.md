@@ -39,7 +39,7 @@ The daemon picks up tasks one at a time, runs each in a full Claude Code session
 
 | Command | Description |
 |---------|-------------|
-| `tmg init` | Create `.trismegistus/` folder with config, tasks, and notes files |
+| `tmg init` | Create `.trismegistus/` folder with config, tasks, notes, and README; adds transient files to `.gitignore` |
 | `tmg add "task"` | Add a task to the queue |
 | `tmg start` | Start the daemon — runs tasks continuously until the queue is empty |
 | `tmg status` | Show counts of pending, in-progress, done, retrying, and gave-up tasks |
@@ -178,11 +178,14 @@ TASK_DELAY_SECONDS=5    # Pause between tasks
 
 ```
 .trismegistus/
-  config          # Daemon configuration
-  tasks.md        # Your task queue
-  notes.md        # Notes for Claude (cleared after each read)
-  handoff         # Context passed between retry attempts (auto-managed)
+  config          # Daemon configuration (committed)
+  README.md       # Explains the folder to collaborators (committed)
+  tasks.md        # Your task queue (gitignored)
+  notes.md        # Notes for Claude, cleared after each read (gitignored)
+  handoff         # Context passed between retry attempts (gitignored, auto-managed)
 ```
+
+`tmg init` automatically adds the transient files (`tasks.md`, `notes.md`, `handoff`) to your project's `.gitignore`. The `config` and `README.md` are committed so team members share daemon settings and understand the folder.
 
 ## License
 
