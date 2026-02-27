@@ -1,13 +1,16 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   DIR_NAME,
   CONFIG_FILE,
   TASKS_FILE,
   NOTES_FILE,
+  README_FILE,
   CONFIG_TEMPLATE,
   TASKS_TEMPLATE,
   NOTES_TEMPLATE,
+  README_TEMPLATE,
+  GITIGNORE_ENTRIES,
   CLAUDE_COMMANDS,
 } from "./types.js";
 
@@ -33,6 +36,7 @@ export function initProject(projectDir: string): InitResult {
     { name: CONFIG_FILE, content: CONFIG_TEMPLATE },
     { name: TASKS_FILE, content: TASKS_TEMPLATE },
     { name: NOTES_FILE, content: NOTES_TEMPLATE },
+    { name: README_FILE, content: README_TEMPLATE },
   ];
 
   for (const file of files) {
@@ -53,6 +57,25 @@ export function initProject(projectDir: string): InitResult {
       writeFileSync(path, cmd.content);
       result.created.push(`.claude/commands/${cmd.name}`);
     }
+  }
+
+  // Add transient files to .gitignore
+  const gitignorePath = join(projectDir, ".gitignore");
+  let gitignoreContent = existsSync(gitignorePath)
+    ? readFileSync(gitignorePath, "utf-8")
+    : "";
+
+  const missing = GITIGNORE_ENTRIES.filter(
+    (entry) => !gitignoreContent.includes(entry),
+  );
+
+  if (missing.length > 0) {
+    const block = missing.join("\n") + "\n";
+    const needsNewline =
+      gitignoreContent.length > 0 && !gitignoreContent.endsWith("\n");
+    gitignoreContent += (needsNewline ? "\n" : "") + block;
+    writeFileSync(gitignorePath, gitignoreContent);
+    result.created.push(".gitignore entries");
   }
 
   return result;

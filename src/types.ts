@@ -51,6 +51,47 @@ TASK_DELAY_SECONDS=5
 
 export const STATUS_PRIORITY: TaskStatus[] = [" ", "!", "!!"];
 
+export const README_FILE = "README.md";
+
+export const README_TEMPLATE = `# .trismegistus
+
+This project uses [Trismegistus](https://www.npmjs.com/package/trismegistus) — a local daemon that runs Claude Code sessions from a task queue.
+
+## Getting started
+
+\`\`\`bash
+npm install -D trismegistus
+npx tmg init      # already done if you see this file
+npx tmg add "your task here"
+npx tmg start     # runs tasks autonomously
+\`\`\`
+
+## Files in this directory
+
+| File | Tracked | Purpose |
+|------|---------|---------|
+| \`config\` | Yes | Daemon settings (retries, timeouts) — shared with team |
+| \`README.md\` | Yes | This file |
+| \`tasks.md\` | No | Personal task queue (gitignored) |
+| \`notes.md\` | No | Notes for Claude, cleared after each read (gitignored) |
+| \`handoff\` | No | Retry context between failed attempts (gitignored) |
+
+## Commands
+
+- \`tmg add "task"\` — Add a task to the queue
+- \`tmg start\` — Start the daemon
+- \`tmg status\` — Show task counts
+- \`tmg notes "text"\` — Leave notes for Claude's next run
+- \`tmg reset\` — Reset gave-up tasks back to pending
+- \`tmg remote\` — Start a VS Code tunnel for mobile access
+`;
+
+export const GITIGNORE_ENTRIES = [
+  ".trismegistus/tasks.md",
+  ".trismegistus/notes.md",
+  ".trismegistus/handoff",
+];
+
 export const CLAUDE_COMMANDS: Array<{ name: string; content: string }> = [
   {
     name: "tmg.md",
