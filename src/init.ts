@@ -51,12 +51,9 @@ export function initProject(projectDir: string): InitResult {
 
   for (const cmd of CLAUDE_COMMANDS) {
     const path = join(claudeCommandsDir, cmd.name);
-    if (existsSync(path)) {
-      result.skipped.push(`.claude/commands/${cmd.name}`);
-    } else {
-      writeFileSync(path, cmd.content);
-      result.created.push(`.claude/commands/${cmd.name}`);
-    }
+    const exists = existsSync(path);
+    writeFileSync(path, cmd.content);
+    result.created.push(`.claude/commands/${cmd.name}${exists ? " (updated)" : ""}`);
   }
 
   // Add transient files to .gitignore

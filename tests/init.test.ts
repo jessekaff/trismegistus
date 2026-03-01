@@ -76,9 +76,10 @@ describe("initProject", () => {
 
     const result = initProject(tmpDir);
 
-    expect(result.created).toEqual([]);
+    const updatedPaths = commandPaths.map((p) => `${p} (updated)`);
+    expect(result.created).toEqual(updatedPaths);
     expect(result.skipped).toEqual([
-      CONFIG_FILE, TASKS_FILE, NOTES_FILE, README_FILE, ...commandPaths,
+      CONFIG_FILE, TASKS_FILE, NOTES_FILE, README_FILE,
     ]);
 
     // Verify custom content was preserved
