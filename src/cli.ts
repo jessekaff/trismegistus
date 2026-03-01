@@ -84,12 +84,11 @@ program
 
       if (editor === "cursor" || !isVSCodeAvailable()) {
         if (isCursorDetected()) {
-          console.log("  Note: Remote source control tunnels only work with VS Code, not Cursor.");
-          console.log("  Each task session will still get a remote-control URL you can view from claude.ai/code.");
+          console.log("  Note: Remote tunnels only work with VS Code, not Cursor.");
         } else {
           console.log("  Note: VS Code CLI not found — skipping tunnel.");
-          console.log("  Each task session will still get a remote-control URL you can view from claude.ai/code.");
         }
+        console.log("  Tip: Enable remote control in your Claude Code settings to monitor sessions from claude.ai/code.");
         console.log("");
       } else {
         // VS Code available — start tunnel
@@ -140,15 +139,9 @@ program
     process.on("SIGINT", cleanup);
     process.on("SIGTERM", cleanup);
 
-    // Start daemon with remote URL logging
+    // Start daemon
     await runDaemon({
       projectDir: process.cwd(),
-      onRemoteUrl(url) {
-        console.log(`  Remote session: ${url}`);
-        qrcode.generate(url, { small: true }, (code: string) => {
-          console.log(code);
-        });
-      },
     });
   });
 

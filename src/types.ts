@@ -108,8 +108,9 @@ tmg start
 The daemon:
 - Picks up pending tasks from \`.trismegistus/tasks.md\`
 - Opens a VS Code tunnel for remote editor access (QR code)
-- Activates /remote-control for each Claude session so you can monitor from claude.ai/code or the Claude mobile app
 - Idles and watches for new tasks when the queue is empty
+
+**Note:** To monitor sessions remotely, enable remote control in your Claude Code settings (\`remote_control: true\` for all sessions).
 
 $ARGUMENTS
 `,

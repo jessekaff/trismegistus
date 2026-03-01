@@ -9,5 +9,4 @@ export default defineConfig({
   banner: {
     js: "#!/usr/bin/env node",
   },
-  external: ["node-pty"],
 });

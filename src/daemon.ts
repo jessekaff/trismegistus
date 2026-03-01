@@ -12,7 +12,7 @@ import {
   getAttemptFromStatus,
   getFailureStatus,
 } from "./tasks.js";
-import { runClaude, type PtySpawnFn } from "./runner.js";
+import { runClaude, type SpawnFn } from "./runner.js";
 import { createRequire } from "node:module";
 import { DIR_NAME, TASKS_FILE } from "./types.js";
 
@@ -94,14 +94,13 @@ function sleep(ms: number): Promise<void> {
 
 export interface DaemonOptions {
   projectDir: string;
-  spawnFn?: PtySpawnFn;
+  spawnFn?: SpawnFn;
   maxIterations?: number; // For testing — limits loop iterations
   onLog?: (msg: string) => void;
-  onRemoteUrl?: (url: string) => void;
 }
 
 export async function runDaemon(opts: DaemonOptions): Promise<void> {
-  const { projectDir, spawnFn, maxIterations, onLog, onRemoteUrl } = opts;
+  const { projectDir, spawnFn, maxIterations, onLog } = opts;
   const log = onLog ?? ((msg: string) => console.log(msg));
   const config = loadConfig(projectDir);
 
@@ -148,9 +147,6 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
       timeoutMs: config.timeoutMinutes * 60 * 1000,
       projectDir,
       spawnFn,
-      onRemoteUrl: onRemoteUrl ?? ((url) => {
-        log(`  Remote session: ${url}`);
-      }),
     });
 
     if (result.success) {

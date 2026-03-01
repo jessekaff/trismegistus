@@ -14,6 +14,7 @@ This gives you the `tmg` command globally — use it from any project.
 
 - Node.js >= 18
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated (`npm install -g @anthropic-ai/claude-code`)
+- Enable remote control in your Claude Code settings to monitor sessions from claude.ai/code or the Claude mobile app (`remote_control: true` for all sessions)
 
 ## Quick Start
 
