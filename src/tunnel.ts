@@ -6,8 +6,7 @@ export function detectEditorCli(): EditorCli {
   // Cursor sets TERM_PROGRAM=cursor in its integrated terminal
   if (process.env.TERM_PROGRAM === "cursor") return "cursor";
 
-  // Cursor also sets VSCODE_PID but with a different resolvedShell
-  // Check for Cursor-specific env vars
+  // Cursor also sets CURSOR_TRACE_DIR
   if (process.env.CURSOR_TRACE_DIR) return "cursor";
 
   return "code";
@@ -22,18 +21,12 @@ function cliExists(cli: string): boolean {
   }
 }
 
-export function checkCodeCli(): EditorCli {
-  const detected = detectEditorCli();
+export function isVSCodeAvailable(): boolean {
+  return cliExists("code");
+}
 
-  if (cliExists(detected)) return detected;
-
-  // Fall back to the other option
-  const fallback: EditorCli = detected === "cursor" ? "code" : "cursor";
-  if (cliExists(fallback)) return fallback;
-
-  throw new Error(
-    `Neither "cursor" nor "code" CLI found. Install VS Code or Cursor, or download the standalone CLI: https://code.visualstudio.com/docs/editor/command-line`,
-  );
+export function isCursorDetected(): boolean {
+  return detectEditorCli() === "cursor";
 }
 
 export interface TunnelResult {
@@ -41,17 +34,29 @@ export interface TunnelResult {
   process: ChildProcess;
 }
 
-export function startTunnel(name: string, cli: EditorCli = "code"): Promise<TunnelResult> {
+export interface TunnelOptions {
+  onOutput?: (line: string) => void;
+}
+
+export function startTunnel(name: string, options: TunnelOptions = {}): Promise<TunnelResult> {
+  if (!isVSCodeAvailable()) {
+    return Promise.reject(
+      new Error(
+        '"code" CLI not found. Install VS Code or download the standalone CLI: https://code.visualstudio.com/docs/editor/command-line',
+      ),
+    );
+  }
+
   return new Promise((resolve, reject) => {
     const child = spawn(
-      cli,
+      "code",
       ["tunnel", "--name", name, "--accept-server-license-terms"],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
 
     let stderr = "";
     let settled = false;
-    const TIMEOUT_MS = 60_000;
+    const TIMEOUT_MS = 120_000;
 
     function settle(fn: () => void) {
       if (!settled) {
@@ -64,17 +69,28 @@ export function startTunnel(name: string, cli: EditorCli = "code"): Promise<Tunn
       child.kill();
       const msg = stderr
         ? `Timed out waiting for tunnel URL. stderr:\n${stderr}`
-        : "Timed out waiting for tunnel URL. You may need to authenticate — run `code tunnel` manually first.";
+        : `Timed out waiting for tunnel URL. You may need to authenticate — run \`code tunnel\` manually first.`;
       settle(() => reject(new Error(msg)));
     }, TIMEOUT_MS);
 
     child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
+      const text = chunk.toString();
+      stderr += text;
+      if (options.onOutput) {
+        for (const line of text.split("\n").filter(Boolean)) {
+          options.onOutput(line);
+        }
+      }
     });
 
     child.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
-      const match = text.match(/(https:\/\/(?:vscode|cursor)\.dev\/tunnel\/[^\s]+)/);
+      if (options.onOutput) {
+        for (const line of text.split("\n").filter(Boolean)) {
+          options.onOutput(line);
+        }
+      }
+      const match = text.match(/(https:\/\/vscode\.dev\/tunnel\/[^\s]+)/);
       if (match) {
         clearTimeout(timer);
         settle(() => resolve({ url: match[1], process: child }));

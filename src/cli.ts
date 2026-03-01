@@ -5,7 +5,7 @@ import qrcode from "qrcode-terminal";
 import { initProject } from "./init.js";
 import { addTask, appendNotes, getTaskCounts, resetGaveUpTasks } from "./tasks.js";
 import { preflight, runDaemon } from "./daemon.js";
-import { checkCodeCli, startTunnel } from "./tunnel.js";
+import { detectEditorCli, isVSCodeAvailable, isCursorDetected, startTunnel } from "./tunnel.js";
 
 const program = new Command();
 
@@ -59,7 +59,8 @@ program
 program
   .command("start")
   .description("Start the daemon — continuously runs tasks from the queue")
-  .action(async () => {
+  .option("--no-tunnel", "Skip VS Code tunnel setup")
+  .action(async (opts: { tunnel: boolean }) => {
     const check = preflight(process.cwd());
 
     for (const err of check.errors) {
@@ -75,7 +76,80 @@ program
 
     console.log("");
 
-    await runDaemon({ projectDir: process.cwd() });
+    // Tunnel setup
+    let tunnelProc: import("node:child_process").ChildProcess | null = null;
+
+    if (opts.tunnel) {
+      const editor = detectEditorCli();
+
+      if (editor === "cursor" || !isVSCodeAvailable()) {
+        if (isCursorDetected()) {
+          console.log("  Note: Remote source control tunnels only work with VS Code, not Cursor.");
+          console.log("  Each task session will still get a remote-control URL you can view from claude.ai/code.");
+        } else {
+          console.log("  Note: VS Code CLI not found — skipping tunnel.");
+          console.log("  Each task session will still get a remote-control URL you can view from claude.ai/code.");
+        }
+        console.log("");
+      } else {
+        // VS Code available — start tunnel
+        const tunnelName = hostname();
+        console.log("  Starting VS Code tunnel...\n");
+
+        try {
+          const { url, process: tp } = await startTunnel(tunnelName, {
+            onOutput(line) {
+              const deviceCodeMatch = line.match(/use code\s+([A-Z0-9]{4}-[A-Z0-9]{4})/i);
+              const deviceUrlMatch = line.match(/(https:\/\/github\.com\/login\/device)/);
+              if (deviceCodeMatch || deviceUrlMatch) {
+                console.log("");
+                if (deviceUrlMatch) {
+                  console.log(`  Open: ${deviceUrlMatch[1]}`);
+                }
+                if (deviceCodeMatch) {
+                  console.log(`  Code: ${deviceCodeMatch[1]}`);
+                }
+                console.log("");
+              } else if (line.includes("Creating tunnel")) {
+                console.log(`  ${line.replace(/^\[.*?\]\s*\w+\s*/, "")}`);
+              }
+            },
+          });
+
+          tunnelProc = tp;
+          console.log("");
+          console.log(`  VS Code tunnel: ${url}`);
+          console.log("");
+          qrcode.generate(url, { small: true }, (code: string) => {
+            console.log(code);
+          });
+          console.log("  Scan QR to access editor remotely");
+          console.log("");
+        } catch (e: unknown) {
+          console.warn(`  Warning: Tunnel failed — ${e instanceof Error ? e.message : String(e)}`);
+          console.warn("  Continuing without tunnel.\n");
+        }
+      }
+    }
+
+    // Cleanup handler
+    const cleanup = () => {
+      tunnelProc?.kill();
+      process.exit(0);
+    };
+    process.on("SIGINT", cleanup);
+    process.on("SIGTERM", cleanup);
+
+    // Start daemon with remote URL logging
+    await runDaemon({
+      projectDir: process.cwd(),
+      onRemoteUrl(url) {
+        console.log(`  Remote session: ${url}`);
+        qrcode.generate(url, { small: true }, (code: string) => {
+          console.log(code);
+        });
+      },
+    });
   });
 
 program
@@ -124,20 +198,40 @@ program
   .description("Open a VS Code tunnel for phone access (QR code)")
   .option("--name <name>", "Tunnel name")
   .action(async (opts: { name?: string }) => {
-    const tunnelName = opts.name ?? hostname();
-    let cli: import("./tunnel.js").EditorCli;
-    try {
-      cli = checkCodeCli();
-    } catch (e: unknown) {
-      console.error(e instanceof Error ? e.message : String(e));
+    if (isCursorDetected()) {
+      console.warn("  Warning: Remote tunnels only work with VS Code, not Cursor.");
+      console.warn("  Attempting anyway with VS Code CLI...\n");
+    }
+
+    if (!isVSCodeAvailable()) {
+      console.error(
+        '  Error: "code" CLI not found. Install VS Code or download the standalone CLI:\n  https://code.visualstudio.com/docs/editor/command-line',
+      );
       process.exit(1);
     }
 
-    const editorName = cli === "cursor" ? "Cursor" : "VS Code";
-    console.log(`Starting ${editorName} tunnel...`);
+    const tunnelName = opts.name ?? hostname();
+    console.log("Starting VS Code tunnel...\n");
 
     try {
-      const { url, process: tunnelProc } = await startTunnel(tunnelName, cli);
+      const { url, process: tunnelProc } = await startTunnel(tunnelName, {
+        onOutput(line) {
+          const deviceCodeMatch = line.match(/use code\s+([A-Z0-9]{4}-[A-Z0-9]{4})/i);
+          const deviceUrlMatch = line.match(/(https:\/\/github\.com\/login\/device)/);
+          if (deviceCodeMatch || deviceUrlMatch) {
+            console.log("");
+            if (deviceUrlMatch) {
+              console.log(`  Open: ${deviceUrlMatch[1]}`);
+            }
+            if (deviceCodeMatch) {
+              console.log(`  Code: ${deviceCodeMatch[1]}`);
+            }
+            console.log("");
+          } else if (line.includes("Creating tunnel")) {
+            console.log(`  ${line.replace(/^\[.*?\]\s*\w+\s*/, "")}`);
+          }
+        },
+      });
 
       console.log("");
       console.log(`  URL: ${url}`);

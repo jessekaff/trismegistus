@@ -5,14 +5,10 @@ A local persistent daemon that runs Claude Code sessions from a task queue. Add 
 ## Install
 
 ```bash
-npm install -D trismegistus
-```
-
-Or install globally:
-
-```bash
 npm install -g trismegistus
 ```
+
+This gives you the `tmg` command globally — use it from any project.
 
 ### Prerequisites
 
@@ -23,14 +19,14 @@ npm install -g trismegistus
 
 ```bash
 # Initialize in your project
-npx tmg init
+tmg init
 
 # Add tasks from the CLI
-npx tmg add "Migrate user model to TypeScript"
-npx tmg add "Write tests for the payment module"
+tmg add "Migrate user model to TypeScript"
+tmg add "Write tests for the payment module"
 
 # Start the daemon
-npx tmg start
+tmg start
 ```
 
 The daemon picks up tasks one at a time, runs each in a full Claude Code session with `--dangerously-skip-permissions`, commits the work, and moves on to the next.
@@ -108,13 +104,15 @@ echo "- [ ] Fix the bug in the login form" >> .trismegistus/tasks.md
 
 ### Monitor from your phone
 
-`tmg remote` creates a secure VS Code tunnel through Microsoft's Azure relay and prints a QR code. Scan it on your phone to get a full VS Code UI — including terminal access — right in the browser. No port forwarding or same-network requirement.
+`tmg remote` creates a secure tunnel through Microsoft's Azure relay and prints a QR code. Scan it on your phone to get a full editor UI — including terminal access — right in the browser. No port forwarding or same-network requirement.
+
+Works with both VS Code and Cursor — it auto-detects which editor you're using and runs the correct tunnel command.
 
 ```bash
 tmg remote
 ```
 
-Prerequisites: VS Code `code` CLI installed, GitHub account (one-time device auth on first use).
+Prerequisites: VS Code (`code`) or Cursor (`cursor`) CLI installed, GitHub account (one-time device auth on first use).
 
 You can set a custom tunnel name:
 

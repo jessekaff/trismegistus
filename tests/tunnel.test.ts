@@ -9,7 +9,7 @@ vi.mock("node:child_process", () => ({
 }));
 
 import { execFileSync, spawn } from "node:child_process";
-import { checkCodeCli, detectEditorCli, startTunnel } from "../src/tunnel.js";
+import { detectEditorCli, isVSCodeAvailable, isCursorDetected, startTunnel } from "../src/tunnel.js";
 
 const mockExecFileSync = vi.mocked(execFileSync);
 const mockSpawn = vi.mocked(spawn);
@@ -36,37 +36,31 @@ describe("detectEditorCli", () => {
   });
 });
 
-describe("checkCodeCli", () => {
-  it("returns detected CLI when it exists", () => {
+describe("isVSCodeAvailable", () => {
+  it("returns true when code CLI exists", () => {
     mockExecFileSync.mockReturnValue("");
-    expect(checkCodeCli()).toBe("code");
+    expect(isVSCodeAvailable()).toBe(true);
     expect(mockExecFileSync).toHaveBeenCalledWith("which", ["code"], {
       stdio: "ignore",
     });
   });
 
-  it("returns cursor when in Cursor and cursor CLI exists", () => {
-    process.env.TERM_PROGRAM = "cursor";
-    mockExecFileSync.mockReturnValue("");
-    expect(checkCodeCli()).toBe("cursor");
-    expect(mockExecFileSync).toHaveBeenCalledWith("which", ["cursor"], {
-      stdio: "ignore",
-    });
-  });
-
-  it("falls back to other CLI if detected one is missing", () => {
-    process.env.TERM_PROGRAM = "cursor";
-    mockExecFileSync
-      .mockImplementationOnce(() => { throw new Error("not found"); }) // cursor missing
-      .mockReturnValueOnce(""); // code exists
-    expect(checkCodeCli()).toBe("code");
-  });
-
-  it("throws when neither CLI is found", () => {
+  it("returns false when code CLI is missing", () => {
     mockExecFileSync.mockImplementation(() => {
       throw new Error("not found");
     });
-    expect(() => checkCodeCli()).toThrow('Neither "cursor" nor "code" CLI found');
+    expect(isVSCodeAvailable()).toBe(false);
+  });
+});
+
+describe("isCursorDetected", () => {
+  it("returns true when TERM_PROGRAM is cursor", () => {
+    process.env.TERM_PROGRAM = "cursor";
+    expect(isCursorDetected()).toBe(true);
+  });
+
+  it("returns false by default", () => {
+    expect(isCursorDetected()).toBe(false);
   });
 });
 
@@ -79,13 +73,22 @@ describe("startTunnel", () => {
     return child;
   }
 
+  it("rejects when code CLI is not available", async () => {
+    mockExecFileSync.mockImplementation(() => {
+      throw new Error("not found");
+    });
+
+    await expect(startTunnel("test-machine")).rejects.toThrow('"code" CLI not found');
+  });
+
   it("resolves with URL when stdout contains tunnel URL", async () => {
+    // isVSCodeAvailable check
+    mockExecFileSync.mockReturnValue("");
     const child = createMockChild();
     mockSpawn.mockReturnValue(child as any);
 
     const promise = startTunnel("test-machine");
 
-    // Simulate the tunnel printing its URL
     child.stdout.push(
       "Open this link in your browser https://vscode.dev/tunnel/test-machine\n",
     );
@@ -93,9 +96,17 @@ describe("startTunnel", () => {
     const result = await promise;
     expect(result.url).toBe("https://vscode.dev/tunnel/test-machine");
     expect(result.process).toBe(child);
+
+    // Should always use "code" CLI
+    expect(mockSpawn).toHaveBeenCalledWith(
+      "code",
+      ["tunnel", "--name", "test-machine", "--accept-server-license-terms"],
+      expect.any(Object),
+    );
   });
 
   it("rejects when process exits before URL appears", async () => {
+    mockExecFileSync.mockReturnValue("");
     const child = createMockChild();
     mockSpawn.mockReturnValue(child as any);
 
@@ -108,6 +119,7 @@ describe("startTunnel", () => {
   });
 
   it("rejects on process error", async () => {
+    mockExecFileSync.mockReturnValue("");
     const child = createMockChild();
     mockSpawn.mockReturnValue(child as any);
 
@@ -120,13 +132,14 @@ describe("startTunnel", () => {
 
   it("rejects on timeout", async () => {
     vi.useFakeTimers();
+    mockExecFileSync.mockReturnValue("");
     const child = createMockChild();
     mockSpawn.mockReturnValue(child as any);
 
     const promise = startTunnel("test-machine");
     const resultPromise = promise.catch((err: Error) => err);
 
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(120_000);
 
     const err = await resultPromise;
     expect(err).toBeInstanceOf(Error);
@@ -138,15 +151,15 @@ describe("startTunnel", () => {
 
   it("includes stderr in timeout error when available", async () => {
     vi.useFakeTimers();
+    mockExecFileSync.mockReturnValue("");
     const child = createMockChild();
     mockSpawn.mockReturnValue(child as any);
 
     const promise = startTunnel("test-machine");
-    // Attach rejection handler before advancing timers to avoid unhandled rejection
     const resultPromise = promise.catch((err: Error) => err);
 
     child.stderr.push("To grant access, open this URL...\n");
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(120_000);
 
     const err = await resultPromise;
     expect(err).toBeInstanceOf(Error);

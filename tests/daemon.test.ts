@@ -9,11 +9,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { EventEmitter } from "node:events";
 import { preflight, runDaemon } from "../src/daemon.js";
 import { initProject } from "../src/init.js";
-import type { SpawnFn } from "../src/runner.js";
-import type { ChildProcess } from "node:child_process";
+import type { PtySpawnFn } from "../src/runner.js";
+import type { IPty, IDisposable } from "node-pty";
 import { DIR_NAME, TASKS_FILE, NOTES_FILE, HANDOFF_FILE } from "../src/types.js";
 
 let tmpDir: string;
@@ -47,33 +46,108 @@ function writeNotes(content: string) {
   writeFileSync(join(tmgDir, NOTES_FILE), content);
 }
 
-function mockSpawn(exitCode: number): SpawnFn {
-  return (_cmd, _args, opts) => {
-    const child = new EventEmitter() as ChildProcess;
-    child.pid = 1;
-    child.stdin = null;
-    child.stdout = null;
-    child.stderr = null;
-    setTimeout(() => child.emit("close", exitCode), 5);
-    if (opts.signal) {
-      opts.signal.addEventListener("abort", () => child.emit("close", null));
-    }
-    return child;
+/**
+ * Creates a mock PtySpawnFn that simulates the full PTY flow:
+ * 1. Emits a ready prompt
+ * 2. Receives /remote-control, emits a fake URL
+ * 3. Receives the task prompt
+ * 4. Exits with the given code
+ */
+function mockPtySpawn(exitCode: number, opts?: { onPromptWritten?: (prompt: string) => void }): PtySpawnFn {
+  return (_file, _args, _options) => {
+    const dataListeners: Array<(data: string) => void> = [];
+    const exitListeners: Array<(e: { exitCode: number; signal?: number }) => void> = [];
+    let writeCount = 0;
+
+    const pty: IPty = {
+      pid: 12345,
+      cols: 120,
+      rows: 40,
+      process: "claude",
+      handleFlowControl: false,
+      onData(listener: (data: string) => void): IDisposable {
+        dataListeners.push(listener);
+        return { dispose() {} };
+      },
+      onExit(listener: (e: { exitCode: number; signal?: number }) => void): IDisposable {
+        exitListeners.push(listener);
+        return { dispose() {} };
+      },
+      write(data: string) {
+        writeCount++;
+        if (writeCount === 1) {
+          // First write is /remote-control — respond with URL then ready prompt
+          setTimeout(() => {
+            for (const fn of dataListeners) {
+              fn("Remote control enabled.\nhttps://claude.ai/code/test123\n\n> ");
+            }
+          }, 1);
+        } else if (writeCount === 2) {
+          // Second write is the task prompt
+          opts?.onPromptWritten?.(data);
+          // Simulate task processing and completion
+          setTimeout(() => {
+            const output = "Working...\n".repeat(15) + "\nDone!\n\n> ";
+            for (const fn of dataListeners) fn(output);
+          }, 2);
+        }
+      },
+      kill(_signal?: string) {
+        setTimeout(() => {
+          for (const fn of exitListeners) fn({ exitCode });
+        }, 0);
+      },
+      resize() {},
+      clear() {},
+      pause() {},
+      resume() {},
+    };
+
+    // Emit initial ready prompt
+    setTimeout(() => {
+      for (const fn of dataListeners) fn("Welcome to Claude!\n\n> ");
+    }, 1);
+
+    return pty;
   };
 }
 
-function timeoutSpawn(): SpawnFn {
-  return (_cmd, _args, opts) => {
-    const child = new EventEmitter() as ChildProcess;
-    child.pid = 1;
-    child.stdin = null;
-    child.stdout = null;
-    child.stderr = null;
-    // Never emits close on its own — waits for abort signal
-    if (opts.signal) {
-      opts.signal.addEventListener("abort", () => child.emit("close", null));
-    }
-    return child;
+/** Mock that simulates an immediate failure (non-zero exit before completing flow) */
+function failPtySpawn(exitCode: number): PtySpawnFn {
+  return (_file, _args, _options) => {
+    const exitListeners: Array<(e: { exitCode: number; signal?: number }) => void> = [];
+
+    const pty: IPty = {
+      pid: 12345,
+      cols: 120,
+      rows: 40,
+      process: "claude",
+      handleFlowControl: false,
+      onData(_listener: (data: string) => void): IDisposable {
+        return { dispose() {} };
+      },
+      onExit(listener: (e: { exitCode: number; signal?: number }) => void): IDisposable {
+        exitListeners.push(listener);
+        return { dispose() {} };
+      },
+      write() {},
+      kill(_signal?: string) {
+        setTimeout(() => {
+          for (const fn of exitListeners) fn({ exitCode });
+        }, 0);
+      },
+      resize() {},
+      clear() {},
+      pause() {},
+      resume() {},
+    };
+
+    // Exit immediately with error code
+    setTimeout(() => {
+      for (const fn of exitListeners) fn({ exitCode });
+    }, 1);
+
+    return pty;
   };
 }
 
@@ -103,8 +177,8 @@ describe("runDaemon", () => {
 
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(0),
-      maxIterations: 2, // 1 to run task, 1 to see no tasks left
+      spawnFn: mockPtySpawn(0),
+      maxIterations: 2,
       onLog: (msg) => logs.push(msg),
     });
 
@@ -119,7 +193,7 @@ describe("runDaemon", () => {
     // First attempt: fails
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(1),
+      spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
     });
@@ -130,7 +204,7 @@ describe("runDaemon", () => {
     // Second attempt: fails again
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(1),
+      spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
     });
@@ -140,34 +214,24 @@ describe("runDaemon", () => {
     // Third attempt: fails → gave up
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(1),
+      spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
     });
 
     expect(readTasks()).toContain("- [!!!] Flaky task");
     expect(logs.some((l) => l.includes("Gave up"))).toBe(true);
-    // Handoff cleaned up after giving up
     expect(existsSync(join(tmgDir, HANDOFF_FILE))).toBe(false);
   });
 
   it("handles timeout correctly", async () => {
     writeTasks("- [ ] Slow task");
-    // 1-second timeout so test runs fast
-    writeConfig("TIMEOUT_MINUTES=0\nTASK_DELAY_SECONDS=0\n");
-    // Override config with raw seconds for testing
-    writeFileSync(
-      join(tmgDir, "config"),
-      "MAX_RETRIES=3\nTIMEOUT_MINUTES=1\nTASK_DELAY_SECONDS=0\nIDLE_POLL_SECONDS=0\n",
-    );
+    writeConfig("MAX_RETRIES=3\nTIMEOUT_MINUTES=1\nTASK_DELAY_SECONDS=0\nIDLE_POLL_SECONDS=0\n");
 
-    // Use a very short timeout by overriding config
-    // Actually, let's use the timeoutSpawn which never resolves on its own
-    // Combined with a 1-minute timeout that's too long for tests...
-    // Instead, test with mockSpawn that returns non-zero (simulates timeout behavior)
+    // Simulate an exit code that looks like a timeout (124)
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(124),
+      spawnFn: failPtySpawn(124),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
     });
@@ -182,19 +246,11 @@ describe("runDaemon", () => {
     writeConfig("TIMEOUT_MINUTES=1\nTASK_DELAY_SECONDS=0\nIDLE_POLL_SECONDS=0\n");
 
     let capturedPrompt = "";
-    const capturingSpawn: SpawnFn = (_cmd, args, opts) => {
-      capturedPrompt = args[2]; // -p argument
-      const child = new EventEmitter() as ChildProcess;
-      child.pid = 1;
-      child.stdin = null;
-      child.stdout = null;
-      child.stderr = null;
-      setTimeout(() => child.emit("close", 0), 5);
-      if (opts.signal) {
-        opts.signal.addEventListener("abort", () => child.emit("close", null));
-      }
-      return child;
-    };
+    const capturingSpawn = mockPtySpawn(0, {
+      onPromptWritten(prompt) {
+        capturedPrompt = prompt;
+      },
+    });
 
     await runDaemon({
       projectDir: tmpDir,
@@ -217,19 +273,11 @@ describe("runDaemon", () => {
     writeConfig("MAX_RETRIES=3\nTIMEOUT_MINUTES=1\nTASK_DELAY_SECONDS=0\nIDLE_POLL_SECONDS=0\n");
 
     let capturedPrompt = "";
-    const capturingSpawn: SpawnFn = (_cmd, args, opts) => {
-      capturedPrompt = args[2];
-      const child = new EventEmitter() as ChildProcess;
-      child.pid = 1;
-      child.stdin = null;
-      child.stdout = null;
-      child.stderr = null;
-      setTimeout(() => child.emit("close", 0), 5);
-      if (opts.signal) {
-        opts.signal.addEventListener("abort", () => child.emit("close", null));
-      }
-      return child;
-    };
+    const capturingSpawn = mockPtySpawn(0, {
+      onPromptWritten(prompt) {
+        capturedPrompt = prompt;
+      },
+    });
 
     await runDaemon({
       projectDir: tmpDir,
@@ -250,7 +298,7 @@ describe("runDaemon", () => {
 
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(0),
+      spawnFn: mockPtySpawn(0),
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
     });
@@ -265,7 +313,7 @@ describe("runDaemon", () => {
 
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(0),
+      spawnFn: mockPtySpawn(0),
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
     });
