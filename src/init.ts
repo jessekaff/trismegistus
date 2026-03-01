@@ -32,14 +32,13 @@ export function initProject(projectDir: string): InitResult {
     mkdirSync(claudeCommandsDir, { recursive: true });
   }
 
-  const files: Array<{ name: string; content: string }> = [
-    { name: CONFIG_FILE, content: CONFIG_TEMPLATE },
+  // User data — never overwrite
+  const userFiles: Array<{ name: string; content: string }> = [
     { name: TASKS_FILE, content: TASKS_TEMPLATE },
     { name: NOTES_FILE, content: NOTES_TEMPLATE },
-    { name: README_FILE, content: README_TEMPLATE },
   ];
 
-  for (const file of files) {
+  for (const file of userFiles) {
     const path = join(tmgDir, file.name);
     if (existsSync(path)) {
       result.skipped.push(file.name);
@@ -47,6 +46,19 @@ export function initProject(projectDir: string): InitResult {
       writeFileSync(path, file.content);
       result.created.push(file.name);
     }
+  }
+
+  // Managed files — always overwrite to stay in sync with installed version
+  const managedFiles: Array<{ name: string; content: string }> = [
+    { name: CONFIG_FILE, content: CONFIG_TEMPLATE },
+    { name: README_FILE, content: README_TEMPLATE },
+  ];
+
+  for (const file of managedFiles) {
+    const path = join(tmgDir, file.name);
+    const exists = existsSync(path);
+    writeFileSync(path, file.content);
+    result.created.push(`${file.name}${exists ? " (updated)" : ""}`);
   }
 
   for (const cmd of CLAUDE_COMMANDS) {

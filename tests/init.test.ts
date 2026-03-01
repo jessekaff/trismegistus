@@ -41,7 +41,7 @@ describe("initProject", () => {
     const result = initProject(tmpDir);
 
     expect(result.created).toEqual([
-      CONFIG_FILE, TASKS_FILE, NOTES_FILE, README_FILE,
+      TASKS_FILE, NOTES_FILE, CONFIG_FILE, README_FILE,
       ...commandPaths, ".gitignore entries",
     ]);
     expect(result.skipped).toEqual([]);
@@ -67,39 +67,46 @@ describe("initProject", () => {
     }
   });
 
-  it("is idempotent — skips existing files", () => {
+  it("is idempotent — preserves user data, updates managed files", () => {
     initProject(tmpDir);
 
-    // Modify a file
+    // Modify user data
     const tasksPath = join(tmpDir, DIR_NAME, TASKS_FILE);
     writeFileSync(tasksPath, "- [ ] My custom task\n");
 
     const result = initProject(tmpDir);
 
-    const updatedPaths = commandPaths.map((p) => `${p} (updated)`);
-    expect(result.created).toEqual(updatedPaths);
-    expect(result.skipped).toEqual([
-      CONFIG_FILE, TASKS_FILE, NOTES_FILE, README_FILE,
+    const updatedCommands = commandPaths.map((p) => `${p} (updated)`);
+    expect(result.created).toEqual([
+      `${CONFIG_FILE} (updated)`,
+      `${README_FILE} (updated)`,
+      ...updatedCommands,
     ]);
+    expect(result.skipped).toEqual([TASKS_FILE, NOTES_FILE]);
 
-    // Verify custom content was preserved
+    // Verify user data was preserved
     expect(readFileSync(tasksPath, "utf-8")).toBe("- [ ] My custom task\n");
+
+    // Verify managed files were updated to latest templates
+    const tmgDir = join(tmpDir, DIR_NAME);
+    expect(readFileSync(join(tmgDir, CONFIG_FILE), "utf-8")).toBe(CONFIG_TEMPLATE);
+    expect(readFileSync(join(tmgDir, README_FILE), "utf-8")).toBe(README_TEMPLATE);
   });
 
-  it("creates only missing files when some exist", () => {
+  it("creates only missing user files when some exist", () => {
     const tmgDir = join(tmpDir, DIR_NAME);
     mkdirSync(tmgDir, { recursive: true });
-    writeFileSync(join(tmgDir, CONFIG_FILE), "MAX_RETRIES=5\n");
+    writeFileSync(join(tmgDir, TASKS_FILE), "- [ ] Existing task\n");
 
     const result = initProject(tmpDir);
 
     expect(result.created).toEqual([
-      TASKS_FILE, NOTES_FILE, README_FILE, ...commandPaths, ".gitignore entries",
+      NOTES_FILE, CONFIG_FILE, README_FILE, ...commandPaths, ".gitignore entries",
     ]);
-    expect(result.skipped).toEqual([CONFIG_FILE]);
+    expect(result.skipped).toEqual([TASKS_FILE]);
 
-    // Existing file preserved
-    expect(readFileSync(join(tmgDir, CONFIG_FILE), "utf-8")).toBe("MAX_RETRIES=5\n");
+    // User data preserved
+    expect(readFileSync(join(tmgDir, TASKS_FILE), "utf-8")).toBe("- [ ] Existing task\n");
   });
 
   it("appends to existing .gitignore without duplicating", () => {
