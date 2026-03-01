@@ -27,10 +27,14 @@ program
     const result = initProject(process.cwd());
 
     for (const name of result.created) {
-      console.log(`  Created ${name}`);
+      if (name.endsWith("(updated)")) {
+        console.log(`  Updated ${name.replace(" (updated)", "")}`);
+      } else {
+        console.log(`  Created ${name}`);
+      }
     }
     for (const name of result.skipped) {
-      console.log(`  Skipped ${name} (already exists)`);
+      console.log(`  Skipped ${name}`);
     }
 
     console.log("");

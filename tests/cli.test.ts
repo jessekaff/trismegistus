@@ -39,7 +39,7 @@ describe("CLI", () => {
 
       // Second init preserves user data, updates managed files
       const output2 = run(["init"], tmpDir);
-      expect(output2).toContain("Created config (updated)");
+      expect(output2).toContain("Updated config");
       expect(output2).toContain("Skipped tasks.md");
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
