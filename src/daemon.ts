@@ -72,9 +72,15 @@ function buildPrompt(
   notes: string,
   handoff: string,
 ): string {
-  let prompt = `You are running autonomously overnight (attempt ${attempt}/${maxRetries}). Complete this task fully, commit your work, don't ask questions.
+  let prompt = `You are an autonomous agent (attempt ${attempt}/${maxRetries}). Complete this task fully without asking questions.
 
-If you are running low on time, write a summary of what you did and what remains to .trismegistus/handoff so the next session can continue.`;
+WORKFLOW:
+1. Break the task into subtasks. Use the Agent tool to spawn sub-agents for independent work when it makes sense.
+2. Plan before coding — understand the codebase first, then implement.
+3. Run tests and verify your work before finishing.
+4. Commit your changes with a clear commit message.
+
+If you cannot finish in time, write a summary of what you did and what remains to .trismegistus/handoff so the next session can continue.`;
 
   if (notes) {
     prompt += `\n\nNOTES FROM HUMAN (priority):\n${notes}`;
@@ -97,16 +103,17 @@ export interface DaemonOptions {
   spawnFn?: PtySpawnFn;
   maxIterations?: number; // For testing — limits loop iterations
   onLog?: (msg: string) => void;
+  startupDelayMs?: number; // For testing — override Claude startup wait
 }
 
 export async function runDaemon(opts: DaemonOptions): Promise<void> {
-  const { projectDir, spawnFn, maxIterations, onLog } = opts;
+  const { projectDir, spawnFn, maxIterations, onLog, startupDelayMs } = opts;
   const log = onLog ?? ((msg: string) => console.log(msg));
   const config = loadConfig(projectDir);
 
   log(`  TMG v${VERSION} — ${new Date().toLocaleString()}`);
   log(`  Project: ${projectDir}`);
-  log(`  Timeout: ${config.timeoutMinutes}m | Max retries: ${config.maxRetries}`);
+  log(`  Timeout: ${config.timeoutMinutes}m | Idle: ${config.idleTimeoutSeconds}s | Max retries: ${config.maxRetries}`);
   log("");
 
   let iterations = 0;
@@ -145,8 +152,10 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
     const result = await runClaude({
       prompt,
       timeoutMs: config.timeoutMinutes * 60 * 1000,
+      idleTimeoutMs: config.idleTimeoutSeconds * 1000,
       projectDir,
       spawnFn,
+      startupDelayMs,
     });
 
     if (result.success) {

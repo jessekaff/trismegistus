@@ -48,10 +48,9 @@ function writeNotes(content: string) {
 
 /**
  * Creates a mock PtySpawnFn that simulates the interactive session:
- * 1. Emits a ready prompt
- * 2. Receives the task prompt
- * 3. Emits task output and completion
- * 4. Exits with the given code
+ * 1. Emits a ready prompt (triggers startup delay)
+ * 2. Receives the task prompt via write()
+ * 3. Simulates Claude doing work then running /exit (process exits naturally)
  */
 function mockPtySpawn(exitCode: number, opts?: { onPromptWritten?: (prompt: string) => void }): PtySpawnFn {
   return (_file, _args, _options) => {
@@ -74,10 +73,15 @@ function mockPtySpawn(exitCode: number, opts?: { onPromptWritten?: (prompt: stri
       },
       write(data: string) {
         opts?.onPromptWritten?.(data);
-        // Simulate task processing and completion
+        // Simulate Claude doing work then exiting via /exit
         setTimeout(() => {
-          const output = "Working...\n".repeat(15) + "\nDone!\n\n> ";
+          // Emit enough output to pass the MIN_OUTPUT_FOR_SUCCESS threshold (500 bytes)
+          const output = "Working on the task...\n".repeat(30) + "Done!\n";
           for (const fn of dataListeners) fn(output);
+          // Process exits naturally (as /exit would cause)
+          setTimeout(() => {
+            for (const fn of exitListeners) fn({ exitCode });
+          }, 2);
         }, 2);
       },
       kill(_signal?: string) {
@@ -91,9 +95,9 @@ function mockPtySpawn(exitCode: number, opts?: { onPromptWritten?: (prompt: stri
       resume() {},
     };
 
-    // Emit initial ready prompt
+    // Emit initial data to trigger startup delay
     setTimeout(() => {
-      for (const fn of dataListeners) fn("Welcome to Claude!\n\n> ");
+      for (const fn of dataListeners) fn("Welcome to Claude!\n");
     }, 1);
 
     return pty;
@@ -168,6 +172,7 @@ describe("runDaemon", () => {
       spawnFn: mockPtySpawn(0),
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(readTasks()).toContain("- [x] Build feature");
@@ -183,6 +188,7 @@ describe("runDaemon", () => {
       spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(readTasks()).toContain("- [!] Flaky task");
@@ -193,6 +199,7 @@ describe("runDaemon", () => {
       spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(readTasks()).toContain("- [!!] Flaky task");
@@ -202,6 +209,7 @@ describe("runDaemon", () => {
       spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(readTasks()).toContain("- [!!!] Flaky task");
@@ -218,6 +226,7 @@ describe("runDaemon", () => {
       spawnFn: failPtySpawn(124),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(readTasks()).toContain("- [!] Slow task");
@@ -241,6 +250,7 @@ describe("runDaemon", () => {
       spawnFn: capturingSpawn,
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(capturedPrompt).toContain("Focus on the API endpoint");
@@ -267,6 +277,7 @@ describe("runDaemon", () => {
       spawnFn: capturingSpawn,
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(capturedPrompt).toContain("Left off at step 3");
@@ -284,6 +295,7 @@ describe("runDaemon", () => {
       spawnFn: mockPtySpawn(0),
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(readTasks()).toContain("- [x] Task with handoff");
@@ -299,6 +311,7 @@ describe("runDaemon", () => {
       spawnFn: mockPtySpawn(0),
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
     });
 
     expect(logs.filter((l) => l.includes("No tasks")).length).toBe(2);

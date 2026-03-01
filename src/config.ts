@@ -5,6 +5,7 @@ import { Config, DEFAULT_CONFIG, DIR_NAME, CONFIG_FILE } from "./types.js";
 const KEY_MAP: Record<string, keyof Config> = {
   MAX_RETRIES: "maxRetries",
   TIMEOUT_MINUTES: "timeoutMinutes",
+  IDLE_TIMEOUT_SECONDS: "idleTimeoutSeconds",
   IDLE_POLL_SECONDS: "idlePollSeconds",
   TASK_DELAY_SECONDS: "taskDelaySeconds",
 };

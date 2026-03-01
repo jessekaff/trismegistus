@@ -9,6 +9,7 @@ export interface Task {
 export interface Config {
   maxRetries: number;
   timeoutMinutes: number;
+  idleTimeoutSeconds: number;
   idlePollSeconds: number;
   taskDelaySeconds: number;
 }
@@ -22,6 +23,7 @@ export interface RunResult {
 export const DEFAULT_CONFIG: Config = {
   maxRetries: 3,
   timeoutMinutes: 30,
+  idleTimeoutSeconds: 15,
   idlePollSeconds: 10,
   taskDelaySeconds: 5,
 };
@@ -45,6 +47,7 @@ export const NOTES_TEMPLATE = `# Notes for Claude — write here, cleared after 
 export const CONFIG_TEMPLATE = `# Trismegistus Configuration
 MAX_RETRIES=3
 TIMEOUT_MINUTES=30
+IDLE_TIMEOUT_SECONDS=15
 IDLE_POLL_SECONDS=10
 TASK_DELAY_SECONDS=5
 `;

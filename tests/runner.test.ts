@@ -63,8 +63,13 @@ function createMockSpawnFn(mockPty: MockPty): PtySpawnFn {
   return (_file, _args, _options) => mockPty as unknown as IPty;
 }
 
+// Helper to flush pending setTimeout(fn, 0) callbacks
+function tick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 10));
+}
+
 describe("runClaude", () => {
-  it("sends the prompt when Claude is ready", async () => {
+  it("sends the prompt after startup delay and succeeds on clean exit", async () => {
     const mock = createMockPty();
     const spawnFn = createMockSpawnFn(mock);
 
@@ -73,27 +78,80 @@ describe("runClaude", () => {
       timeoutMs: 30000,
       projectDir: "/tmp",
       spawnFn,
+      startupDelayMs: 0,
+      idleTimeoutMs: 5000,
     });
 
-    // Simulate Claude showing its ready prompt
+    // Simulate Claude startup
     mock._emitData("Welcome to Claude Code!\n\n> ");
 
+    await tick();
+
     // Should have sent the task prompt
-    expect(mock.write).toHaveBeenCalledWith("Fix the bug\r");
+    expect(mock.write).toHaveBeenCalledWith("Fix the bug");
 
-    // Simulate task completion — Claude returns to prompt after output
-    const longOutput = "Working on the bug...\n".repeat(10);
-    mock._emitData(longOutput + "\nDone!\n\n> ");
-
-    // Kill should have been called (task complete detected)
-    expect(mock.kill).toHaveBeenCalled();
+    // Simulate Claude doing work then exiting
+    mock._emitData("Working on the bug...\nDone!\n");
+    mock._emitExit(0);
 
     const result = await promise;
     expect(result.success).toBe(true);
     expect(result.timedOut).toBe(false);
   });
 
-  it("handles timeout", async () => {
+  it("detects idle and kills process as success when output is substantial", async () => {
+    const mock = createMockPty();
+    const spawnFn = createMockSpawnFn(mock);
+
+    const promise = runClaude({
+      prompt: "Fix the bug",
+      timeoutMs: 30000,
+      projectDir: "/tmp",
+      spawnFn,
+      startupDelayMs: 0,
+      idleTimeoutMs: 50, // Short idle timeout for test
+    });
+
+    // Startup
+    mock._emitData("Welcome!\n");
+    await tick();
+
+    // Prompt sent, Claude does substantial work (>500 bytes)
+    mock._emitData("Working on the task...\n".repeat(50));
+
+    // Wait for idle timeout to fire — Claude goes quiet
+    const result = await promise;
+    expect(result.success).toBe(true);
+    expect(mock.kill).toHaveBeenCalled();
+  });
+
+  it("treats idle as failure when output is minimal (prompt likely failed)", async () => {
+    const mock = createMockPty();
+    const spawnFn = createMockSpawnFn(mock);
+
+    const promise = runClaude({
+      prompt: "Fix the bug",
+      timeoutMs: 30000,
+      projectDir: "/tmp",
+      spawnFn,
+      startupDelayMs: 0,
+      idleTimeoutMs: 50,
+    });
+
+    // Startup
+    mock._emitData("Welcome!\n");
+    await tick();
+
+    // Barely any output after prompt — prompt likely didn't submit
+    mock._emitData(">\n");
+
+    // Idle fires but minimal output → failure
+    const result = await promise;
+    expect(result.success).toBe(false);
+    expect(mock.kill).toHaveBeenCalled();
+  });
+
+  it("handles hard timeout", async () => {
     const mock = createMockPty();
 
     mock.kill = vi.fn(() => {
@@ -107,6 +165,8 @@ describe("runClaude", () => {
       timeoutMs: 50,
       projectDir: "/tmp",
       spawnFn,
+      startupDelayMs: 0,
+      idleTimeoutMs: 60000,
     });
 
     const result = await promise;
@@ -126,6 +186,7 @@ describe("runClaude", () => {
       timeoutMs: 30000,
       projectDir: "/tmp",
       spawnFn,
+      startupDelayMs: 0,
     });
 
     mock._emitExit(1);
@@ -151,6 +212,7 @@ describe("runClaude", () => {
       timeoutMs: 30000,
       projectDir: "/my/project",
       spawnFn,
+      startupDelayMs: 0,
     });
 
     mock._emitExit(0);

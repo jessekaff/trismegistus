@@ -1,6 +1,6 @@
 {
   "name": "trismegistus",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "A local persistent daemon that runs AI sessions from a task queue, with mobile support.",
   "type": "module",
   "bin": {
@@ -39,7 +39,7 @@
   ],
   "dependencies": {
     "commander": "^13.0.0",
-    "node-pty": "^1.1.0",
+    "node-pty": "^1.2.0-beta.11",
     "qrcode-terminal": "^0.12.0"
   },
   "devDependencies": {
