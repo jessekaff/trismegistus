@@ -9,11 +9,10 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { EventEmitter } from "node:events";
 import { preflight, runDaemon } from "../src/daemon.js";
 import { initProject } from "../src/init.js";
-import type { SpawnFn } from "../src/runner.js";
-import type { ChildProcess } from "node:child_process";
+import type { PtySpawnFn } from "../src/runner.js";
+import type { IPty, IDisposable } from "node-pty";
 import { DIR_NAME, TASKS_FILE, NOTES_FILE, HANDOFF_FILE } from "../src/types.js";
 
 let tmpDir: string;
@@ -47,50 +46,97 @@ function writeNotes(content: string) {
   writeFileSync(join(tmgDir, NOTES_FILE), content);
 }
 
-function createMockChild(exitCode: number): ChildProcess {
-  const emitter = new EventEmitter();
-  const child = Object.assign(emitter, {
-    pid: 12345,
-    stdin: null,
-    stdout: null,
-    stderr: null,
-    stdio: [null, null, null] as const,
-    connected: false,
-    exitCode: null as number | null,
-    signalCode: null as string | null,
-    spawnargs: [] as string[],
-    spawnfile: "",
-    killed: false,
-    kill: () => {
-      setTimeout(() => emitter.emit("exit", exitCode, null), 0);
-      return true;
-    },
-    send: () => true,
-    disconnect: () => {},
-    unref: () => {},
-    ref: () => {},
-    [Symbol.dispose]: () => {},
-  });
-  // Exit after a short delay to simulate process completion
-  setTimeout(() => emitter.emit("exit", exitCode, null), 1);
-  return child as unknown as ChildProcess;
-}
-
 /**
- * Creates a mock SpawnFn that captures the prompt and exits with the given code.
+ * Creates a mock PtySpawnFn that simulates the interactive session:
+ * 1. Emits a ready prompt
+ * 2. Receives the task prompt
+ * 3. Emits task output and completion
+ * 4. Exits with the given code
  */
-function mockSpawn(exitCode: number, opts?: { onPrompt?: (prompt: string) => void }): SpawnFn {
-  return (_command, args, _cwd) => {
-    // The prompt is the second arg: ["-p", prompt, "--dangerously-skip-permissions"]
-    const prompt = args[1];
-    opts?.onPrompt?.(prompt);
-    return createMockChild(exitCode);
+function mockPtySpawn(exitCode: number, opts?: { onPromptWritten?: (prompt: string) => void }): PtySpawnFn {
+  return (_file, _args, _options) => {
+    const dataListeners: Array<(data: string) => void> = [];
+    const exitListeners: Array<(e: { exitCode: number; signal?: number }) => void> = [];
+
+    const pty: IPty = {
+      pid: 12345,
+      cols: 120,
+      rows: 40,
+      process: "claude",
+      handleFlowControl: false,
+      onData(listener: (data: string) => void): IDisposable {
+        dataListeners.push(listener);
+        return { dispose() {} };
+      },
+      onExit(listener: (e: { exitCode: number; signal?: number }) => void): IDisposable {
+        exitListeners.push(listener);
+        return { dispose() {} };
+      },
+      write(data: string) {
+        opts?.onPromptWritten?.(data);
+        // Simulate task processing and completion
+        setTimeout(() => {
+          const output = "Working...\n".repeat(15) + "\nDone!\n\n> ";
+          for (const fn of dataListeners) fn(output);
+        }, 2);
+      },
+      kill(_signal?: string) {
+        setTimeout(() => {
+          for (const fn of exitListeners) fn({ exitCode });
+        }, 0);
+      },
+      resize() {},
+      clear() {},
+      pause() {},
+      resume() {},
+    };
+
+    // Emit initial ready prompt
+    setTimeout(() => {
+      for (const fn of dataListeners) fn("Welcome to Claude!\n\n> ");
+    }, 1);
+
+    return pty;
   };
 }
 
 /** Mock that simulates an immediate failure */
-function failSpawn(exitCode: number): SpawnFn {
-  return () => createMockChild(exitCode);
+function failPtySpawn(exitCode: number): PtySpawnFn {
+  return (_file, _args, _options) => {
+    const exitListeners: Array<(e: { exitCode: number; signal?: number }) => void> = [];
+
+    const pty: IPty = {
+      pid: 12345,
+      cols: 120,
+      rows: 40,
+      process: "claude",
+      handleFlowControl: false,
+      onData(_listener: (data: string) => void): IDisposable {
+        return { dispose() {} };
+      },
+      onExit(listener: (e: { exitCode: number; signal?: number }) => void): IDisposable {
+        exitListeners.push(listener);
+        return { dispose() {} };
+      },
+      write() {},
+      kill(_signal?: string) {
+        setTimeout(() => {
+          for (const fn of exitListeners) fn({ exitCode });
+        }, 0);
+      },
+      resize() {},
+      clear() {},
+      pause() {},
+      resume() {},
+    };
+
+    // Exit immediately with error code
+    setTimeout(() => {
+      for (const fn of exitListeners) fn({ exitCode });
+    }, 1);
+
+    return pty;
+  };
 }
 
 describe("preflight", () => {
@@ -119,7 +165,7 @@ describe("runDaemon", () => {
 
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(0),
+      spawnFn: mockPtySpawn(0),
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
     });
@@ -132,10 +178,9 @@ describe("runDaemon", () => {
     writeTasks("- [ ] Flaky task");
     writeConfig("MAX_RETRIES=3\nTIMEOUT_MINUTES=1\nTASK_DELAY_SECONDS=0\nIDLE_POLL_SECONDS=0\n");
 
-    // First attempt: fails
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: failSpawn(1),
+      spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
     });
@@ -143,20 +188,18 @@ describe("runDaemon", () => {
     expect(readTasks()).toContain("- [!] Flaky task");
     expect(existsSync(join(tmgDir, HANDOFF_FILE))).toBe(true);
 
-    // Second attempt: fails again
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: failSpawn(1),
+      spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
     });
 
     expect(readTasks()).toContain("- [!!] Flaky task");
 
-    // Third attempt: fails → gave up
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: failSpawn(1),
+      spawnFn: failPtySpawn(1),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
     });
@@ -172,7 +215,7 @@ describe("runDaemon", () => {
 
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: failSpawn(124),
+      spawnFn: failPtySpawn(124),
       maxIterations: 1,
       onLog: (msg) => logs.push(msg),
     });
@@ -187,8 +230,8 @@ describe("runDaemon", () => {
     writeConfig("TIMEOUT_MINUTES=1\nTASK_DELAY_SECONDS=0\nIDLE_POLL_SECONDS=0\n");
 
     let capturedPrompt = "";
-    const capturingSpawn = mockSpawn(0, {
-      onPrompt(prompt) {
+    const capturingSpawn = mockPtySpawn(0, {
+      onPromptWritten(prompt) {
         capturedPrompt = prompt;
       },
     });
@@ -203,7 +246,6 @@ describe("runDaemon", () => {
     expect(capturedPrompt).toContain("Focus on the API endpoint");
     expect(capturedPrompt).toContain("NOTES FROM HUMAN");
 
-    // Notes should be cleared
     const notesContent = readFileSync(join(tmgDir, NOTES_FILE), "utf-8");
     expect(notesContent).not.toContain("Focus on the API endpoint");
   });
@@ -214,8 +256,8 @@ describe("runDaemon", () => {
     writeConfig("MAX_RETRIES=3\nTIMEOUT_MINUTES=1\nTASK_DELAY_SECONDS=0\nIDLE_POLL_SECONDS=0\n");
 
     let capturedPrompt = "";
-    const capturingSpawn = mockSpawn(0, {
-      onPrompt(prompt) {
+    const capturingSpawn = mockPtySpawn(0, {
+      onPromptWritten(prompt) {
         capturedPrompt = prompt;
       },
     });
@@ -239,7 +281,7 @@ describe("runDaemon", () => {
 
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(0),
+      spawnFn: mockPtySpawn(0),
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
     });
@@ -254,7 +296,7 @@ describe("runDaemon", () => {
 
     await runDaemon({
       projectDir: tmpDir,
-      spawnFn: mockSpawn(0),
+      spawnFn: mockPtySpawn(0),
       maxIterations: 2,
       onLog: (msg) => logs.push(msg),
     });

@@ -12,7 +12,7 @@ import {
   getAttemptFromStatus,
   getFailureStatus,
 } from "./tasks.js";
-import { runClaude, type SpawnFn } from "./runner.js";
+import { runClaude, type PtySpawnFn } from "./runner.js";
 import { createRequire } from "node:module";
 import { DIR_NAME, TASKS_FILE } from "./types.js";
 
@@ -94,7 +94,7 @@ function sleep(ms: number): Promise<void> {
 
 export interface DaemonOptions {
   projectDir: string;
-  spawnFn?: SpawnFn;
+  spawnFn?: PtySpawnFn;
   maxIterations?: number; // For testing — limits loop iterations
   onLog?: (msg: string) => void;
 }

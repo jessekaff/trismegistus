@@ -1,119 +1,165 @@
 import { describe, it, expect, vi } from "vitest";
-import { runClaude, type SpawnFn } from "../src/runner.js";
-import { EventEmitter } from "node:events";
-import type { ChildProcess } from "node:child_process";
+import { runClaude, type PtySpawnFn } from "../src/runner.js";
+import type { IPty, IDisposable } from "node-pty";
 
-function createMockChild(): ChildProcess & { _exit: (code: number) => void; _error: (err: Error) => void } {
-  const emitter = new EventEmitter();
-  const child = Object.assign(emitter, {
+interface MockPty {
+  pid: number;
+  cols: number;
+  rows: number;
+  process: string;
+  handleFlowControl: boolean;
+  onData: IPty["onData"];
+  onExit: IPty["onExit"];
+  write: ReturnType<typeof vi.fn>;
+  kill: ReturnType<typeof vi.fn>;
+  resize: () => void;
+  clear: () => void;
+  pause: () => void;
+  resume: () => void;
+  _emitData: (data: string) => void;
+  _emitExit: (exitCode: number) => void;
+}
+
+function createMockPty(): MockPty {
+  const dataListeners: Array<(data: string) => void> = [];
+  const exitListeners: Array<(e: { exitCode: number; signal?: number }) => void> = [];
+
+  const mock: MockPty = {
     pid: 12345,
-    stdin: null,
-    stdout: null,
-    stderr: null,
-    stdio: [null, null, null] as const,
-    connected: false,
-    exitCode: null as number | null,
-    signalCode: null as string | null,
-    spawnargs: [] as string[],
-    spawnfile: "",
-    killed: false,
+    cols: 120,
+    rows: 40,
+    process: "claude",
+    handleFlowControl: false,
+    write: vi.fn(),
     kill: vi.fn(() => {
-      setTimeout(() => emitter.emit("exit", 0, null), 0);
-      return true;
+      setTimeout(() => {
+        for (const fn of exitListeners) fn({ exitCode: 0 });
+      }, 0);
     }),
-    send: vi.fn(),
-    disconnect: vi.fn(),
-    unref: vi.fn(),
-    ref: vi.fn(),
-    [Symbol.dispose]: vi.fn(),
-    _exit(code: number) {
-      emitter.emit("exit", code, null);
+    resize() {},
+    clear() {},
+    pause() {},
+    resume() {},
+    onData(listener: (data: string) => void): IDisposable {
+      dataListeners.push(listener);
+      return { dispose() {} };
     },
-    _error(err: Error) {
-      emitter.emit("error", err);
+    onExit(listener: (e: { exitCode: number; signal?: number }) => void): IDisposable {
+      exitListeners.push(listener);
+      return { dispose() {} };
     },
-  });
-  return child as unknown as ChildProcess & { _exit: (code: number) => void; _error: (err: Error) => void };
+    _emitData(data: string) {
+      for (const fn of dataListeners) fn(data);
+    },
+    _emitExit(exitCode: number) {
+      for (const fn of exitListeners) fn({ exitCode });
+    },
+  };
+
+  return mock;
+}
+
+function createMockSpawnFn(mockPty: MockPty): PtySpawnFn {
+  return (_file, _args, _options) => mockPty as unknown as IPty;
 }
 
 describe("runClaude", () => {
-  it("spawns claude with -p and the prompt", async () => {
-    const child = createMockChild();
-    let capturedArgs: { command: string; args: string[]; cwd: string } | null = null;
+  it("sends the prompt when Claude is ready", async () => {
+    const mock = createMockPty();
+    const spawnFn = createMockSpawnFn(mock);
 
-    const spawnFn: SpawnFn = (command, args, cwd) => {
-      capturedArgs = { command, args, cwd };
-      setTimeout(() => child._exit(0), 0);
-      return child;
-    };
-
-    const result = await runClaude({
+    const promise = runClaude({
       prompt: "Fix the bug",
-      timeoutMs: 30000,
-      projectDir: "/my/project",
-      spawnFn,
-    });
-
-    expect(capturedArgs).toEqual({
-      command: "claude",
-      args: ["-p", "Fix the bug", "--dangerously-skip-permissions"],
-      cwd: "/my/project",
-    });
-    expect(result.success).toBe(true);
-    expect(result.timedOut).toBe(false);
-    expect(result.exitCode).toBe(0);
-  });
-
-  it("returns failure for non-zero exit", async () => {
-    const child = createMockChild();
-    const spawnFn: SpawnFn = () => {
-      setTimeout(() => child._exit(1), 0);
-      return child;
-    };
-
-    const result = await runClaude({
-      prompt: "test",
       timeoutMs: 30000,
       projectDir: "/tmp",
       spawnFn,
     });
 
-    expect(result.success).toBe(false);
-    expect(result.exitCode).toBe(1);
+    // Simulate Claude showing its ready prompt
+    mock._emitData("Welcome to Claude Code!\n\n> ");
+
+    // Should have sent the task prompt
+    expect(mock.write).toHaveBeenCalledWith("Fix the bug\r");
+
+    // Simulate task completion — Claude returns to prompt after output
+    const longOutput = "Working on the bug...\n".repeat(10);
+    mock._emitData(longOutput + "\nDone!\n\n> ");
+
+    // Kill should have been called (task complete detected)
+    expect(mock.kill).toHaveBeenCalled();
+
+    const result = await promise;
+    expect(result.success).toBe(true);
+    expect(result.timedOut).toBe(false);
   });
 
   it("handles timeout", async () => {
-    const child = createMockChild();
-    const spawnFn: SpawnFn = () => child;
+    const mock = createMockPty();
 
-    const result = await runClaude({
+    mock.kill = vi.fn(() => {
+      setTimeout(() => mock._emitExit(0), 0);
+    });
+
+    const spawnFn = createMockSpawnFn(mock);
+
+    const promise = runClaude({
       prompt: "test",
       timeoutMs: 50,
       projectDir: "/tmp",
       spawnFn,
     });
 
+    const result = await promise;
     expect(result.timedOut).toBe(true);
     expect(result.success).toBe(false);
     expect(result.exitCode).toBe(124);
-    expect(child.kill).toHaveBeenCalled();
+    expect(mock.kill).toHaveBeenCalled();
   });
 
-  it("handles spawn error", async () => {
-    const child = createMockChild();
-    const spawnFn: SpawnFn = () => {
-      setTimeout(() => child._error(new Error("ENOENT")), 0);
-      return child;
-    };
+  it("returns failure for non-zero exit", async () => {
+    const mock = createMockPty();
+    mock.kill = vi.fn();
+    const spawnFn = createMockSpawnFn(mock);
 
-    const result = await runClaude({
+    const promise = runClaude({
       prompt: "test",
       timeoutMs: 30000,
       projectDir: "/tmp",
       spawnFn,
     });
 
+    mock._emitExit(1);
+
+    const result = await promise;
     expect(result.success).toBe(false);
     expect(result.exitCode).toBe(1);
+  });
+
+  it("passes correct args to pty.spawn", async () => {
+    const mock = createMockPty();
+    mock.kill = vi.fn();
+
+    let capturedArgs: { file: string; args: string[]; cwd: string } | null = null;
+
+    const spawnFn: PtySpawnFn = (file, args, options) => {
+      capturedArgs = { file, args: args as string[], cwd: options.cwd as string };
+      return mock as unknown as IPty;
+    };
+
+    const promise = runClaude({
+      prompt: "do something",
+      timeoutMs: 30000,
+      projectDir: "/my/project",
+      spawnFn,
+    });
+
+    mock._emitExit(0);
+    await promise;
+
+    expect(capturedArgs).toEqual({
+      file: "claude",
+      args: ["--dangerously-skip-permissions"],
+      cwd: "/my/project",
+    });
   });
 });
