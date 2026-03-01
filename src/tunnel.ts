@@ -47,10 +47,13 @@ export function startTunnel(name: string, options: TunnelOptions = {}): Promise<
     );
   }
 
+  // Tunnel labels must match [\w-=]{1,50} — strip dots and invalid chars
+  const safeName = name.replace(/[^\w-=]/g, "").slice(0, 50) || "tmg-tunnel";
+
   return new Promise((resolve, reject) => {
     const child = spawn(
       "code",
-      ["tunnel", "--name", name, "--accept-server-license-terms"],
+      ["tunnel", "--name", safeName, "--accept-server-license-terms"],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
 
@@ -73,18 +76,8 @@ export function startTunnel(name: string, options: TunnelOptions = {}): Promise<
       settle(() => reject(new Error(msg)));
     }, TIMEOUT_MS);
 
-    child.stderr?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString();
-      stderr += text;
-      if (options.onOutput) {
-        for (const line of text.split("\n").filter(Boolean)) {
-          options.onOutput(line);
-        }
-      }
-    });
-
-    child.stdout?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString();
+    function handleOutput(text: string, isStderr: boolean) {
+      if (isStderr) stderr += text;
       if (options.onOutput) {
         for (const line of text.split("\n").filter(Boolean)) {
           options.onOutput(line);
@@ -95,7 +88,10 @@ export function startTunnel(name: string, options: TunnelOptions = {}): Promise<
         clearTimeout(timer);
         settle(() => resolve({ url: match[1], process: child }));
       }
-    });
+    }
+
+    child.stderr?.on("data", (chunk: Buffer) => handleOutput(chunk.toString(), true));
+    child.stdout?.on("data", (chunk: Buffer) => handleOutput(chunk.toString(), false));
 
     child.on("error", (err) => {
       clearTimeout(timer);
