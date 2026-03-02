@@ -5,10 +5,12 @@ import {
   CONFIG_FILE,
   TASKS_FILE,
   NOTES_FILE,
+  PROMPT_FILE,
   README_FILE,
   CONFIG_TEMPLATE,
   TASKS_TEMPLATE,
   NOTES_TEMPLATE,
+  PROMPT_TEMPLATE,
   README_TEMPLATE,
   GITIGNORE_ENTRIES,
   CLAUDE_COMMANDS,
@@ -36,6 +38,7 @@ export function initProject(projectDir: string): InitResult {
   const userFiles: Array<{ name: string; content: string }> = [
     { name: TASKS_FILE, content: TASKS_TEMPLATE },
     { name: NOTES_FILE, content: NOTES_TEMPLATE },
+    { name: PROMPT_FILE, content: PROMPT_TEMPLATE },
   ];
 
   for (const file of userFiles) {

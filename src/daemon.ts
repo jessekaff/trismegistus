@@ -11,6 +11,7 @@ import {
   deleteHandoff,
   getAttemptFromStatus,
   getFailureStatus,
+  readPromptInstructions,
 } from "./tasks.js";
 import { runClaude, type PtySpawnFn } from "./runner.js";
 import { createRequire } from "node:module";
@@ -71,6 +72,7 @@ function buildPrompt(
   maxRetries: number,
   notes: string,
   handoff: string,
+  instructions: string,
 ): string {
   let prompt = `You are an autonomous agent (attempt ${attempt}/${maxRetries}). Complete this task fully without asking questions.
 
@@ -78,9 +80,12 @@ WORKFLOW:
 1. Break the task into subtasks. Use the Agent tool to spawn sub-agents for independent work when it makes sense.
 2. Plan before coding — understand the codebase first, then implement.
 3. Run tests and verify your work before finishing.
-4. Commit your changes with a clear commit message.
 
 If you cannot finish in time, write a summary of what you did and what remains to .trismegistus/handoff so the next session can continue.`;
+
+  if (instructions) {
+    prompt += `\n\nPROJECT INSTRUCTIONS:\n${instructions}`;
+  }
 
   if (notes) {
     prompt += `\n\nNOTES FROM HUMAN (priority):\n${notes}`;
@@ -133,6 +138,7 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
     const attempt = getAttemptFromStatus(task.status);
     const notes = readAndClearNotes(projectDir);
     const handoff = readHandoff(projectDir);
+    const instructions = readPromptInstructions(projectDir);
 
     log("");
     log("━".repeat(47));
@@ -147,6 +153,7 @@ export async function runDaemon(opts: DaemonOptions): Promise<void> {
       config.maxRetries,
       notes,
       handoff,
+      instructions,
     );
 
     const result = await runClaude({

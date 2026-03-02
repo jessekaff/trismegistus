@@ -15,10 +15,12 @@ import {
   CONFIG_FILE,
   TASKS_FILE,
   NOTES_FILE,
+  PROMPT_FILE,
   README_FILE,
   CONFIG_TEMPLATE,
   TASKS_TEMPLATE,
   NOTES_TEMPLATE,
+  PROMPT_TEMPLATE,
   README_TEMPLATE,
   GITIGNORE_ENTRIES,
   CLAUDE_COMMANDS,
@@ -41,7 +43,7 @@ describe("initProject", () => {
     const result = initProject(tmpDir);
 
     expect(result.created).toEqual([
-      TASKS_FILE, NOTES_FILE, CONFIG_FILE, README_FILE,
+      TASKS_FILE, NOTES_FILE, PROMPT_FILE, CONFIG_FILE, README_FILE,
       ...commandPaths, ".gitignore entries",
     ]);
     expect(result.skipped).toEqual([]);
@@ -51,6 +53,7 @@ describe("initProject", () => {
     expect(readFileSync(join(tmgDir, CONFIG_FILE), "utf-8")).toBe(CONFIG_TEMPLATE);
     expect(readFileSync(join(tmgDir, TASKS_FILE), "utf-8")).toBe(TASKS_TEMPLATE);
     expect(readFileSync(join(tmgDir, NOTES_FILE), "utf-8")).toBe(NOTES_TEMPLATE);
+    expect(readFileSync(join(tmgDir, PROMPT_FILE), "utf-8")).toBe(PROMPT_TEMPLATE);
     expect(readFileSync(join(tmgDir, README_FILE), "utf-8")).toBe(README_TEMPLATE);
 
     // Verify claude commands were created
@@ -82,7 +85,7 @@ describe("initProject", () => {
       `${README_FILE} (updated)`,
       ...updatedCommands,
     ]);
-    expect(result.skipped).toEqual([TASKS_FILE, NOTES_FILE]);
+    expect(result.skipped).toEqual([TASKS_FILE, NOTES_FILE, PROMPT_FILE]);
 
     // Verify user data was preserved
     expect(readFileSync(tasksPath, "utf-8")).toBe("- [ ] My custom task\n");
@@ -101,7 +104,7 @@ describe("initProject", () => {
     const result = initProject(tmpDir);
 
     expect(result.created).toEqual([
-      NOTES_FILE, CONFIG_FILE, README_FILE, ...commandPaths, ".gitignore entries",
+      NOTES_FILE, PROMPT_FILE, CONFIG_FILE, README_FILE, ...commandPaths, ".gitignore entries",
     ]);
     expect(result.skipped).toEqual([TASKS_FILE]);
 
