@@ -7,6 +7,7 @@ import {
   TASKS_FILE,
   NOTES_FILE,
   HANDOFF_FILE,
+  PROMPT_FILE,
   STATUS_PRIORITY,
 } from "./types.js";
 
@@ -188,6 +189,17 @@ export function addTask(projectDir: string, text: string): void {
   const line = `- [ ] ${trimmed}\n`;
   const separator = content.length > 0 && !content.endsWith("\n") ? "\n" : "";
   writeFileSync(path, content + separator + line);
+}
+
+export function readPromptInstructions(projectDir: string): string {
+  const path = join(projectDir, DIR_NAME, PROMPT_FILE);
+  if (!existsSync(path)) return "";
+  const content = readFileSync(path, "utf-8");
+  return content
+    .split("\n")
+    .filter((l) => !l.startsWith("#") && l.trim() !== "")
+    .join("\n")
+    .trim();
 }
 
 export function getFailureStatus(attempt: number): TaskStatus {

@@ -33,6 +33,7 @@ export const CONFIG_FILE = "config";
 export const TASKS_FILE = "tasks.md";
 export const NOTES_FILE = "notes.md";
 export const HANDOFF_FILE = "handoff";
+export const PROMPT_FILE = "prompt-instructions.md";
 
 export const TASKS_TEMPLATE = `# Tasks — one per line
 # - [ ] = pending   - [x] = done
@@ -42,6 +43,14 @@ export const TASKS_TEMPLATE = `# Tasks — one per line
 `;
 
 export const NOTES_TEMPLATE = `# Notes for Claude — write here, cleared after each read
+`;
+
+export const PROMPT_TEMPLATE = `# Prompt Instructions
+# These instructions are injected into every Claude session started by the daemon.
+# Customize this file to control how Claude approaches your tasks.
+
+- Commit your changes with a clear commit message when done.
+- Follow existing code style and conventions in the project.
 `;
 
 export const CONFIG_TEMPLATE = `# Trismegistus Configuration
@@ -74,6 +83,7 @@ npx tmg start     # runs tasks autonomously
 | File | Tracked | Purpose |
 |------|---------|---------|
 | \`config\` | Yes | Daemon settings (retries, timeouts) — shared with team |
+| \`prompt-instructions.md\` | Yes | Instructions injected into every Claude session — shared with team |
 | \`README.md\` | Yes | This file |
 | \`tasks.md\` | No | Personal task queue (gitignored) |
 | \`notes.md\` | No | Notes for Claude, cleared after each read (gitignored) |

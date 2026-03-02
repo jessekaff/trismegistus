@@ -13,7 +13,7 @@ import { preflight, runDaemon } from "../src/daemon.js";
 import { initProject } from "../src/init.js";
 import type { PtySpawnFn } from "../src/runner.js";
 import type { IPty, IDisposable } from "node-pty";
-import { DIR_NAME, TASKS_FILE, NOTES_FILE, HANDOFF_FILE } from "../src/types.js";
+import { DIR_NAME, TASKS_FILE, NOTES_FILE, HANDOFF_FILE, PROMPT_FILE } from "../src/types.js";
 
 let tmpDir: string;
 let tmgDir: string;
@@ -283,6 +283,33 @@ describe("runDaemon", () => {
     expect(capturedPrompt).toContain("Left off at step 3");
     expect(capturedPrompt).toContain("CONTEXT FROM PREVIOUS ATTEMPT");
     expect(capturedPrompt).toContain("attempt 2/3");
+  });
+
+  it("injects prompt-instructions.md into the prompt", async () => {
+    writeTasks("- [ ] Some task");
+    writeFileSync(join(tmgDir, PROMPT_FILE), "# Instructions\nAlways use TypeScript strict mode.\n- Run linter before committing.\n");
+    writeConfig("TIMEOUT_MINUTES=1\nTASK_DELAY_SECONDS=0\nIDLE_POLL_SECONDS=0\n");
+
+    let capturedPrompt = "";
+    const capturingSpawn = mockPtySpawn(0, {
+      onPromptWritten(prompt) {
+        capturedPrompt = prompt;
+      },
+    });
+
+    await runDaemon({
+      projectDir: tmpDir,
+      spawnFn: capturingSpawn,
+      maxIterations: 2,
+      onLog: (msg) => logs.push(msg),
+      startupDelayMs: 0,
+    });
+
+    expect(capturedPrompt).toContain("Always use TypeScript strict mode.");
+    expect(capturedPrompt).toContain("Run linter before committing.");
+    expect(capturedPrompt).toContain("PROJECT INSTRUCTIONS");
+    // Comments should be stripped
+    expect(capturedPrompt).not.toContain("# Instructions");
   });
 
   it("cleans up handoff on success", async () => {
